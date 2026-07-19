@@ -108,6 +108,18 @@ static void callTM (lua_State *L, const TValue *f, const TValue *p1,
 
 
 void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
+  // PICO-8 0.2.5 changelog: sub(str,pos,pos) can be written as str[pos]
+  if (ttisstring(t)) {
+    const char *s = svalue(t);
+    size_t ls = tsvalue(t)->len;
+    int k = cast_int(nvalue(key));
+    size_t idx = k > 0 ? k - 1 : ls + k;
+    if (idx >= ls)
+      setnilvalue(val);
+    else
+      setsvalue2s(L, val, luaS_newlstr(L, s + idx, 1));
+    return;
+  }
   int loop;
   for (loop = 0; loop < MAXTAGLOOP; loop++) {
     const TValue *tm;
@@ -203,6 +215,32 @@ static int call_orderTM (lua_State *L, const TValue *p1, const TValue *p2,
     return -1;  /* no metamethod */
   else
     return !l_isfalse(L->top);
+}
+
+
+/* snespico8: C rewrite; full 64KB including 0.2.4 extended RAM (z8lua
+** masked to 0x7fff, but standalone z8lua has no RAM attached at all) */
+#define PEEK(ram, address) ((ram) ? (ram)[(address) & 0xffffu] : 0)
+
+lua_Number luaV_peek(struct lua_State *L, lua_Number a, int count)
+{
+  unsigned char const *p = G(L)->pico8memory;
+  unsigned int address = (unsigned int)p8fix_toint((long)a) & 0xffffu;
+  unsigned long ret = 0;
+  switch (count) {
+    case 4:
+      ret |= (unsigned long)PEEK(p, address + 1) << 8;
+      ret |= (unsigned long)PEEK(p, address);
+      address += 2;
+      /* fall through */
+    case 2:
+      ret |= (unsigned long)PEEK(p, address + 1) << 24;
+      /* fall through */
+    case 1:
+      ret |= (unsigned long)PEEK(p, address) << 16;
+      break;
+  }
+  return (lua_Number)(long)(LUA_INT32)ret;
 }
 
 
@@ -363,7 +401,7 @@ void luaV_arith (lua_State *L, StkId ra, const TValue *rb,
   const TValue *b, *c;
   if ((b = luaV_tonumber(rb, &tempb)) != NULL &&
       (c = luaV_tonumber(rc, &tempc)) != NULL) {
-    lua_Number res = luaO_arith(op - TM_ADD + LUA_OPADD, nvalue(b), nvalue(c));
+    lua_Number res = luaO_arith(L, op - TM_ADD + LUA_OPADD, nvalue(b), nvalue(c));
     setnvalue(ra, res);
   }
   else if (!call_binTM(L, rb, rc, ra, op))
@@ -427,7 +465,10 @@ void luaV_finishOp (lua_State *L) {
   OpCode op = GET_OPCODE(inst);
   switch (op) {  /* finish its execution */
     case OP_ADD: case OP_SUB: case OP_MUL: case OP_DIV:
-    case OP_MOD: case OP_POW: case OP_UNM: case OP_LEN:
+    case OP_MOD: case OP_POW: case OP_IDIV: case OP_BAND:
+    case OP_BOR: case OP_BXOR: case OP_SHL: case OP_SHR:
+    case OP_LSHR: case OP_ROTL: case OP_ROTR:
+    case OP_UNM: case OP_BNOT: case OP_LEN:
     case OP_GETTABUP: case OP_GETTABLE: case OP_SELF: {
       setobjs2s(L, base + GETARG_A(inst), --L->top);
       break;
@@ -526,6 +567,13 @@ void luaV_finishOp (lua_State *L) {
         } \
         else { Protect(luaV_arith(L, ra, rb, rc, tm)); } }
 
+#define unary_op(op,tm) {\
+        TValue *rb = RB(i); \
+        if (ttisnumber(rb)) { \
+          lua_Number nb = nvalue(rb); \
+          setnvalue(ra, op(L, nb)); \
+        } \
+        else { Protect(luaV_arith(L, ra, rb, rb, tm)); } }
 
 #define vmdispatch(o)	switch(o)
 #define vmcase(l,b)	case l: {b}  break;
@@ -632,15 +680,47 @@ void luaV_execute (lua_State *L) {
       vmcase(OP_POW,
         arith_op(luai_numpow, TM_POW);
       )
+      vmcase(OP_IDIV,
+        arith_op(luai_numidiv, TM_IDIV);
+      )
+      vmcase(OP_BAND,
+        arith_op(luai_numband, TM_BAND);
+      )
+      vmcase(OP_BOR,
+        arith_op(luai_numbor, TM_BOR);
+      )
+      vmcase(OP_BXOR,
+        arith_op(luai_numbxor, TM_BXOR);
+      )
+      vmcase(OP_SHL,
+        arith_op(luai_numshl, TM_SHL);
+      )
+      vmcase(OP_SHR,
+        arith_op(luai_numshr, TM_SHR);
+      )
+      vmcase(OP_LSHR,
+        arith_op(luai_numlshr, TM_LSHR);
+      )
+      vmcase(OP_ROTL,
+        arith_op(luai_numrotl, TM_ROTL);
+      )
+      vmcase(OP_ROTR,
+        arith_op(luai_numrotr, TM_ROTR);
+      )
       vmcase(OP_UNM,
-        TValue *rb = RB(i);
-        if (ttisnumber(rb)) {
-          lua_Number nb = nvalue(rb);
-          setnvalue(ra, luai_numunm(L, nb));
-        }
-        else {
-          Protect(luaV_arith(L, ra, rb, rb, TM_UNM));
-        }
+        unary_op(luai_numunm, TM_UNM);
+      )
+      vmcase(OP_BNOT,
+        unary_op(luai_numbnot, TM_BNOT);
+      )
+      vmcase(OP_PEEK,
+        unary_op(luai_numpeek, TM_PEEK);
+      )
+      vmcase(OP_PEEK2,
+        unary_op(luai_numpeek2, TM_PEEK2);
+      )
+      vmcase(OP_PEEK4,
+        unary_op(luai_numpeek4, TM_PEEK4);
       )
       vmcase(OP_NOT,
         TValue *rb = RB(i);
@@ -766,8 +846,11 @@ void luaV_execute (lua_State *L) {
       )
       vmcase(OP_FORLOOP,
         lua_Number step = nvalue(ra+2);
-        lua_Number idx = luai_numadd(L, nvalue(ra), step); /* increment index */
+        lua_Number idx = luai_numadd(L, (lua_Number)nvalue(ra), step); /* increment index */
         lua_Number limit = nvalue(ra+1);
+        /* check for idx sign wrap-around */
+        if (luai_numlt(L, 0, step) ? luai_numle(L, nvalue(ra), idx)
+                                   : luai_numle(L, idx, nvalue(ra)))
         if (luai_numlt(L, 0, step) ? luai_numle(L, idx, limit)
                                    : luai_numle(L, limit, idx)) {
           ci->u.l.savedpc += GETARG_sBx(i);  /* jump back */

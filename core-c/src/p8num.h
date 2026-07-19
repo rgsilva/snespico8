@@ -21,7 +21,21 @@ long p8fix_pow(long a, long b);
 long p8fix_unm(long a);
 long p8fix_sqrt(long v);
 long p8fix_floor(long a);         /* as fix32 */
+long p8fix_ceil(long a);          /* as fix32, = -floor(-x) */
 long p8fix_fromint(long i);       /* wraps beyond +-32767, like PICO-8 */
+
+/* dialect operators: bit ops on the raw 16.16 bits, shift counts are
+** floored ints, negative counts reverse direction (z8lua semantics) */
+long p8fix_idiv(long a, long b);
+long p8fix_band(long a, long b);
+long p8fix_bor(long a, long b);
+long p8fix_bxor(long a, long b);
+long p8fix_bnot(long a);
+long p8fix_shl(long a, long b);
+long p8fix_shr(long a, long b);
+long p8fix_lshr(long a, long b);
+long p8fix_rotl(long a, long b);
+long p8fix_rotr(long a, long b);
 long p8fix_toint(long a);         /* floor, as plain integer */
 
 int p8_fix2str(char *buf, long v);               /* PICO-8 tostr, ret len */

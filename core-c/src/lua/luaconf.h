@@ -466,6 +466,32 @@ extern long p8_str2fix(const char *s, char **endptr);
 #define luai_numle(L,a,b)	((a)<=(b))
 #define luai_numisnan(L,a)	0 /* no NaN in fix32 */
 
+/* PICO-8 dialect operators (bit ops work on the raw 16.16 bits) */
+#define luai_numidiv(L,a,b)	((LUA_NUMBER)p8fix_idiv((long)(a), (long)(b)))
+#define luai_numband(L,a,b)	((LUA_NUMBER)p8fix_band((long)(a), (long)(b)))
+#define luai_numbor(L,a,b)	((LUA_NUMBER)p8fix_bor((long)(a), (long)(b)))
+#define luai_numbxor(L,a,b)	((LUA_NUMBER)p8fix_bxor((long)(a), (long)(b)))
+#define luai_numshl(L,a,b)	((LUA_NUMBER)p8fix_shl((long)(a), (long)(b)))
+#define luai_numshr(L,a,b)	((LUA_NUMBER)p8fix_shr((long)(a), (long)(b)))
+#define luai_numlshr(L,a,b)	((LUA_NUMBER)p8fix_lshr((long)(a), (long)(b)))
+#define luai_numrotl(L,a,b)	((LUA_NUMBER)p8fix_rotl((long)(a), (long)(b)))
+#define luai_numrotr(L,a,b)	((LUA_NUMBER)p8fix_rotr((long)(a), (long)(b)))
+#define luai_numbnot(L,a)	((LUA_NUMBER)p8fix_bnot((long)(a)))
+#define luai_numpeek(L,a)	(luaV_peek(L,(a),1))
+#define luai_numpeek2(L,a)	(luaV_peek(L,(a),2))
+#define luai_numpeek4(L,a)	(luaV_peek(L,(a),4))
+
+extern long p8fix_idiv(long a, long b);
+extern long p8fix_band(long a, long b);
+extern long p8fix_bor(long a, long b);
+extern long p8fix_bxor(long a, long b);
+extern long p8fix_shl(long a, long b);
+extern long p8fix_shr(long a, long b);
+extern long p8fix_lshr(long a, long b);
+extern long p8fix_rotl(long a, long b);
+extern long p8fix_rotr(long a, long b);
+extern long p8fix_bnot(long a);
+
 /* integer conversions: floor semantics, raw bits for unsigned (bit ops) */
 #define lua_number2int(i,n)	((i)=(int)p8fix_toint((long)(n)))
 #define lua_number2integer(i,n)	((i)=(LUA_INTEGER)p8fix_toint((long)(n)))

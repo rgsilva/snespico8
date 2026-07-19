@@ -38,8 +38,11 @@ static const char *const luaX_tokens [] = {
     "end", "false", "for", "function", "goto", "if",
     "in", "local", "nil", "not", "or", "repeat",
     "return", "then", "true", "until", "while",
-    "..", "...", "==", ">=", "<=", "~=", "::", "<eof>",
-    "<number>", "<name>", "<string>"
+    "..", "...", "==", ">=", "<=", "~=", "!=", "::",
+    "<eof>", "<number>", "<name>", "<string>", "?",
+    "<eol>", "^^", "<<", ">>", ">>>", "<<>", ">><",
+    "+=", "-=", "*=", "/=", "%=", "^=", "\\=", "&=", "|=",
+    "^^=", "<<=", ">>=", ">>>=", "<<>=", ">><=", "..=",
 };
 
 
@@ -91,6 +94,11 @@ const char *luaX_token2str (LexState *ls, int token) {
     else  /* names, strings, and numerals */
       return s;
   }
+}
+
+
+void luaX_trackbraces (LexState *ls) {
+  ls->braces = ls->t.token == '(' ? 1 : -1;
 }
 
 
@@ -171,7 +179,9 @@ void luaX_setinput (lua_State *L, LexState *ls, ZIO *z, TString *source,
   ls->z = z;
   ls->fs = NULL;
   ls->linenumber = 1;
+  ls->emiteol = 0;
   ls->lastline = 1;
+  ls->braces = -1;
   ls->source = source;
   ls->envn = luaS_new(L, LUA_ENV);  /* create env name */
   luaS_fix(ls->envn);  /* never collect this name */
@@ -236,16 +246,18 @@ static void trydecpoint (LexState *ls, SemInfo *seminfo) {
 ** will reject ill-formed numerals.
 */
 static void read_numeral (LexState *ls, SemInfo *seminfo) {
-  const char *expo = "Ee";
   int first = ls->current;
   lua_assert(lisdigit(ls->current));
   save_and_next(ls);
-  if (first == '0' && check_next(ls, "Xx"))  /* hexadecimal? */
-    expo = "Pp";
+  {
+  int hexa = 0;
+  if (first == '0') {
+    if (check_next(ls, "Xx")) {  /* hexadecimal? */
+      hexa = 1;
+    } else check_next(ls, "Bb");  /* binary? */
+  }
   for (;;) {
-    if (check_next(ls, expo))  /* exponent part? */
-      check_next(ls, "+-");  /* optional exponent sign */
-    if (lisxdigit(ls->current) || ls->current == '.')
+    if ((hexa ? lisxdigit(ls->current) : lisdigit(ls->current)) || ls->current == '.')
       save_and_next(ls);
     else  break;
   }
@@ -253,6 +265,7 @@ static void read_numeral (LexState *ls, SemInfo *seminfo) {
   buffreplace(ls, '.', ls->decpoint);  /* follow locale for decimal point */
   if (!buff2d(ls->buff, &seminfo->r))  /* format error? */
     trydecpoint(ls, seminfo); /* try to update decimal point separator */
+  }
 }
 
 
@@ -361,6 +374,12 @@ static void read_string (LexState *ls, int del, SemInfo *seminfo) {
         int c;  /* final character to be saved */
         next(ls);  /* do not save the `\' */
         switch (ls->current) {
+          case '*': c = '\1'; goto read_save;
+          case '#': c = '\2'; goto read_save;
+          case '-': c = '\3'; goto read_save;
+          case '|': c = '\4'; goto read_save;
+          case '+': c = '\5'; goto read_save;
+          case '^': c = '\6'; goto read_save;
           case 'a': c = '\a'; goto read_save;
           case 'b': c = '\b'; goto read_save;
           case 'f': c = '\f'; goto read_save;
@@ -410,15 +429,22 @@ static int llex (LexState *ls, SemInfo *seminfo) {
     switch (ls->current) {
       case '\n': case '\r': {  /* line breaks */
         inclinenumber(ls);
+        if (ls->emiteol) { ls->emiteol = 0; return TK_EOL; }
         break;
       }
       case ' ': case '\f': case '\t': case '\v': {  /* spaces */
         next(ls);
         break;
       }
-      case '-': {  /* '-' or '--' (comment) */
+      case '?': {  /* '?' (shorthand print) */
         next(ls);
-        if (ls->current != '-') return '-';
+        ls->emiteol = 1;
+        return TK_PRINT;
+      }
+      case '-': {  /* '-' or '-=' or '--' (comment) */
+        next(ls);
+        if (ls->current == '=') { next(ls); return TK_SUBE; }
+        else if (ls->current != '-') return '-';
         /* else is a comment */
         next(ls);
         if (ls->current == '[') {  /* long comment? */
@@ -435,6 +461,36 @@ static int llex (LexState *ls, SemInfo *seminfo) {
           next(ls);  /* skip until end of line (or end of file) */
         break;
       }
+      case '/': {  /* '/' or '/=' or '//' (short comment) */
+        next(ls);
+        if (ls->current == '=') { next(ls); return TK_DIVE; }
+        else if (ls->current != '/') return '/';
+        next(ls);
+        while (!currIsNewline(ls) && ls->current != EOZ)
+          next(ls);  /* skip until end of line (or end of file) */
+        break;
+      }
+      case '+': case '*': case '%': case '&':
+      case '|': case '~': case '!': case '\\': {
+        /* '+', '*', '%', '\', '&', '|', '!', '~', and
+           the '+=' etc. counterparts */
+        int c = ls->current;
+        next(ls);
+        if (ls->current != '=') return c;
+        else {
+          next(ls);
+          switch (c) {
+            case '+': return TK_ADDE;
+            case '*': return TK_MULE;
+            case '%': return TK_MODE;
+            case '&': return TK_BANDE;
+            case '|': return TK_BORE;
+            case '~': return TK_NE;
+            case '!': return TK_NE2;
+            case '\\': default: return TK_IDIVE;
+          }
+        }
+      }
       case '[': {  /* long string or simply '[' */
         int sep = skip_sep(ls);
         if (sep >= 0) {
@@ -449,20 +505,40 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         if (ls->current != '=') return '=';
         else { next(ls); return TK_EQ; }
       }
-      case '<': {
+      case '<': {  /* '<=' or '<' or '<<=' or '<<' or '<<>=' or '<<>' */
         next(ls);
-        if (ls->current != '=') return '<';
-        else { next(ls); return TK_LE; }
+        if (ls->current == '=') { next(ls); return TK_LE; }
+        else if (ls->current != '<') return '<';
+        next(ls);
+        if (ls->current == '=') { next(ls); return TK_SHLE; }
+        else if (ls->current != '>') return TK_SHL;
+        next(ls);
+        if (ls->current == '=') { next(ls); return TK_ROTLE; }
+        else return TK_ROTL;
       }
-      case '>': {
+      case '^': {  /* '^=' or '^' or '^^' or '^^=' */
         next(ls);
-        if (ls->current != '=') return '>';
-        else { next(ls); return TK_GE; }
+        if (ls->current == '=') { next(ls); return TK_POWE; }
+        else if (ls->current != '^') return '^';
+        next(ls);
+        if (ls->current == '=') { next(ls); return TK_BXORE; }
+        else return TK_BXOR;
       }
-      case '~': {
+      case '>': {  /* '>=', '>', '>>=', '>><=', >><', '>>', '>>>=', or '>>>' */
         next(ls);
-        if (ls->current != '=') return '~';
-        else { next(ls); return TK_NE; }
+        if (ls->current == '=') { next(ls); return TK_GE; }
+        else if (ls->current != '>') return '>';
+        next(ls);
+        if (ls->current == '=') { next(ls); return TK_SHRE; }
+        else if (ls->current == '<') {
+          next(ls);
+          if (ls->current == '=') { next(ls); return TK_ROTRE; }
+          else return TK_ROTR;
+        }
+        else if (ls->current != '>') return TK_SHR;
+        next(ls);
+        if (ls->current == '=') { next(ls); return TK_LSHRE; }
+        else return TK_LSHR;
       }
       case ':': {
         next(ls);
@@ -473,11 +549,13 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         read_string(ls, ls->current, seminfo);
         return TK_STRING;
       }
-      case '.': {  /* '.', '..', '...', or number */
+      case '.': {  /* '.', '..', '..=', '...', or number */
         save_and_next(ls);
         if (check_next(ls, ".")) {
           if (check_next(ls, "."))
             return TK_DOTS;   /* '...' */
+          else if (check_next(ls, "="))
+            return TK_CONCATE;   /* '..=' */
           else return TK_CONCAT;   /* '..' */
         }
         else if (!lisdigit(ls->current)) return '.';
@@ -508,6 +586,8 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         }
         else {  /* single-char tokens (+ - / ...) */
           int c = ls->current;
+          ls->braces += c == ')' ? -1 :  /* handle brace count for short if */
+                        c == '(' ? ls->braces > 0 ? 1 : -1 : 0;
           next(ls);
           return c;
         }

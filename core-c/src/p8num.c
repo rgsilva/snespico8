@@ -299,3 +299,56 @@ long p8_str2fix(const char *s, char **endptr)
     return S(v);
   }
 }
+
+/* ---- PICO-8 dialect operators (M1c) ----
+** Bit ops work on the raw 16.16 bits; shift counts are floored ints,
+** negative counts reverse direction (z8lua fix32.h semantics). */
+
+long p8fix_idiv(long a, long b) { return p8fix_floor(p8fix_div(a, b)); }
+long p8fix_band(long a, long b) { return S(U(a) & U(b)); }
+long p8fix_bor(long a, long b) { return S(U(a) | U(b)); }
+long p8fix_bxor(long a, long b) { return S(U(a) ^ U(b)); }
+long p8fix_bnot(long a) { return S(~U(a)); }
+
+long p8fix_lshr(long a, long b);
+
+long p8fix_shl(long a, long b)
+{
+  long n = p8fix_toint(b);
+  if (n < 0)
+    return p8fix_lshr(a, p8fix_unm(b));
+  return (n >= 32) ? 0 : S(U(a) << n);
+}
+
+long p8fix_shr(long a, long b)
+{
+  long n = p8fix_toint(b);
+  if (n < 0)
+    return p8fix_shl(a, p8fix_unm(b));
+  if (n > 31)
+    n = 31;
+  /* arithmetic shift without impl-defined behavior */
+  return (a < 0) ? S(~(~U(a) >> n)) : S(U(a) >> n);
+}
+
+long p8fix_lshr(long a, long b)
+{
+  long n = p8fix_toint(b);
+  if (n < 0)
+    return p8fix_shl(a, p8fix_unm(b));
+  return (n >= 32) ? 0 : S(U(a) >> n);
+}
+
+long p8fix_rotl(long a, long b)
+{
+  long n = p8fix_toint(b) & 31;
+  return n ? S((U(a) << n) | (U(a) >> (32 - n))) : a;
+}
+
+long p8fix_rotr(long a, long b)
+{
+  long n = p8fix_toint(b) & 31;
+  return n ? S((U(a) >> n) | (U(a) << (32 - n))) : a;
+}
+
+long p8fix_ceil(long a) { return p8fix_unm(p8fix_floor(p8fix_unm(a))); }
