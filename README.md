@@ -30,6 +30,9 @@ docs/     project brief, design notes
 - M0d: Mode 7 chunky-framebuffer path proven and measured — full-screen
   expansion+DMA ≈ 6 fps ceiling unoptimized (`snes/test/m7demo.png`).
   Rendering will not be the bottleneck.
-- Next (M1): PC reference core — vanilla Lua C + z8lua dialect diff
-  re-applied in C (fix32), .p8 loader, headless `runp8`, micro-cart
-  vector suite with goldens from real PICO-8.
+- M1 done: PC reference core — fix32 numbers, full P8 dialect and
+  library, all oracle-exact against z8lua (149 vector outputs).
+- **M2 done: full graphics API — Celeste Classic (evercore) runs
+  deterministically on the reference core**, title screen to gameplay.
+- Next: M1.5 (ops/frame measurement → honest SNES speed projection),
+  then M3 (SNES bring-up of this exact core).

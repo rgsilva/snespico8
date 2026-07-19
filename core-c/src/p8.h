@@ -47,6 +47,7 @@ extern uint8_t p8_ram[P8_RAM_SIZE];
 typedef void (*p8_flip_fn)(void *ud);
 void p8_set_flip(p8_flip_fn fn, void *ud);
 void p8_set_buttons(uint16_t p0, uint16_t p1); /* bit i = button i held */
+void p8_input_frame(void);      /* advance btnp held counters, once per frame */
 
 void p8_reset(void);            /* clear RAM, default draw state */
 void p8_open(lua_State *L);     /* register the API as globals */

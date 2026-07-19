@@ -1,0 +1,8 @@
+FLIP 1 5155cde5
+FLIP 2 5155cde5
+2
+2
+0
+3
+true
+wrote build/gfx_map.ppm

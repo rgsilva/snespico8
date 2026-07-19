@@ -7,9 +7,10 @@ Z8LUA=../tools/z8lua/z8lua
 
 {
   printf 'pico-8 cartridge\nversion 42\n__lua__\n'
+  printf 'print = printh -- M2: print draws to the screen; route to stderr\n'
   cat tests/dialect.lua
 } > build/dialect.p8
-./build/runp8 build/dialect.p8 -n 0 2>/dev/null | grep -v '^DONE' > build/dialect_ours.txt
+./build/runp8 build/dialect.p8 -n 0 2>&1 >/dev/null | grep -v '^DONE' > build/dialect_ours.txt
 
 "$Z8LUA" tests/dialect.lua > build/dialect_z8.txt
 

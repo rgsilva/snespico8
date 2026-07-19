@@ -21,13 +21,16 @@ $(BUILD)/lua_%.o: src/lua/%.c | $(BUILD)
 $(BUILD)/p8num.o: src/p8num.c src/p8num.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+$(BUILD)/p8gfx.o: src/p8gfx.c src/p8.h src/p8int.h src/p8font.h | $(BUILD)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 $(BUILD)/p8.o: src/p8.c src/p8.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/runp8.o: src/runp8.c src/p8.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/runp8: $(BUILD)/runp8.o $(BUILD)/p8.o $(BUILD)/p8num.o $(LUA_OBJS)
+$(BUILD)/runp8: $(BUILD)/runp8.o $(BUILD)/p8.o $(BUILD)/p8gfx.o $(BUILD)/p8num.o $(LUA_OBJS)
 	$(CC) -o $@ $^ -lm
 
 test: $(BUILD)/runp8
