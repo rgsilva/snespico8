@@ -12,3 +12,4 @@ build/
 /carts/*.p8.png
 /carts/*.p8
 .DS_Store
+/core-c/tests/carts-external/

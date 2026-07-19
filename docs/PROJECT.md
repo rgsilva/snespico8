@@ -220,6 +220,26 @@ tail (phased), byte-exact `^` vs real PICO-8 (matches our oracle instead).
         >>>, short-if, !=, ?), `tests/libvec.sh` 72/72. Cart hash still
         c5a1d7e5 through it all.
   - [ ] M1.5: ops/frame measured over a cart corpus → SNES projection
+- [x] M2: **full gfx API on the PC core — Celeste Classic runs.**
+      `src/p8gfx.c`: line (with 0x5f3c endpoint state), rect(fill),
+      circ(fill), oval(fill), spr (flips, fractional w/h), sspr, map +
+      mget/mset (incl. the 0x1000 shared region), sget/sset, fget/fset,
+      pal (draw+screen+table forms, transparency bit preserved), palt
+      (incl. bitfield form), fillp (two-color + transparent-secondary,
+      via the shared shape-pixel pipeline), cursor, print (P8SCII font
+      from fake-08's grid via tools/mkfont.py, wide glyphs 128+, \n,
+      cursor-mode scrolling, returns next x), btnp (held counters,
+      0x5f5c/0x5f5d delay/repeat), unpack; stubs: music/sfx/menuitem/
+      cstore/reload/extcmd (no-op), cartdata/dget/dset (0x5e00 RAM, no
+      persistence), stat (always 0). Tests: `tests/gfxvec.sh` — six
+      micro-carts, per-flip hash goldens (self-regression; VERIFY tags
+      mark semantics to pin against real PICO-8: circle/oval shapes,
+      line-state edge cases, pal() reset scope, print/fillp interaction,
+      btnp 0-means-default, sspr negative sizes, P8SCII control codes
+      unimplemented). Smoke test: **evercore.p8 (vanilla Celeste Classic
+      modbase) runs deterministically** — title screen and level 1
+      render correctly (`tests/celeste.sh`, cart fetched separately,
+      not committed). Sound remains M6.
 - [ ] M2: full gfx API on PC (spr/sspr/map/pal/palt/fillp/clip/camera/
       P8SCII print subset, peek/poke/memcpy semantics); real BBS carts run
       headless; Celeste classic flagship

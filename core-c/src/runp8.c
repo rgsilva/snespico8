@@ -255,6 +255,7 @@ int main(int argc, char **argv)
           mask = (unsigned)strtoul(ln, NULL, 16);
       }
       p8_set_buttons((uint16_t)mask, 0);
+      p8_input_frame();
       call_global(L, upd);
       call_global(L, "_draw");
       lua_getglobal(L, "flip");   /* implicit flip after _draw */

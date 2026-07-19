@@ -6,31 +6,33 @@
 #include <string.h>
 #include "p8.h"
 #include "p8num.h"
+#include "p8int.h"
 #include "lua/lauxlib.h"
 
 uint8_t p8_ram[P8_RAM_SIZE];
 
 static p8_flip_fn flip_fn;
 static void *flip_ud;
-static uint16_t buttons[2];
+uint16_t p8i_buttons[2];
+uint8_t p8i_held[2][8];
 static uint32_t frames;
 
 void p8_set_flip(p8_flip_fn fn, void *ud) { flip_fn = fn; flip_ud = ud; }
-void p8_set_buttons(uint16_t p0, uint16_t p1) { buttons[0] = p0; buttons[1] = p1; }
+void p8_set_buttons(uint16_t p0, uint16_t p1) { p8i_buttons[0] = p0; p8i_buttons[1] = p1; }
 uint32_t p8_frame_count(void) { return frames; }
 
 /* number->int with PICO-8 flooring (toward -inf).
 ** M1: lua_Number is still double; becomes a >>16 under fix32 (M1b). */
-static int p8_toint(lua_State *L, int idx)
+int p8a_int(lua_State *L, int idx)
 {
   return (int)p8fix_toint((long)lua_tonumber(L, idx));
 }
 
-static int p8_optint(lua_State *L, int idx, int def)
+int p8a_optint(lua_State *L, int idx, int def)
 {
   if (lua_isnoneornil(L, idx))
     return def;
-  return p8_toint(L, idx);
+  return p8a_int(L, idx);
 }
 
 static void rnd_seed(uint32_t seed);
@@ -50,11 +52,11 @@ void p8_reset(void)
   frames = 0;
 }
 
-static int16_t cam_x(void) { return (int16_t)(p8_ram[P8_DS_CAM_X] | (p8_ram[P8_DS_CAM_X + 1] << 8)); }
-static int16_t cam_y(void) { return (int16_t)(p8_ram[P8_DS_CAM_Y] | (p8_ram[P8_DS_CAM_Y + 1] << 8)); }
+int p8i_cam_x(void) { return (int)(int16_t)(p8_ram[P8_DS_CAM_X] | (p8_ram[P8_DS_CAM_X + 1] << 8)); }
+int p8i_cam_y(void) { return (int)(int16_t)(p8_ram[P8_DS_CAM_Y] | (p8_ram[P8_DS_CAM_Y + 1] << 8)); }
 
 /* raw screen poke, no camera/clip/palette: x,y must be in range */
-static void screen_set(int x, int y, uint8_t c)
+void p8i_screen_set(int x, int y, uint8_t c)
 {
   uint8_t *b = &p8_ram[P8_SCREEN + (uint16_t)(y * 64 + (x >> 1))];
   if (x & 1)
@@ -63,28 +65,83 @@ static void screen_set(int x, int y, uint8_t c)
     *b = (uint8_t)((*b & 0xF0) | c);
 }
 
-static uint8_t screen_get(int x, int y)
+uint8_t p8i_screen_get(int x, int y)
 {
   uint8_t b = p8_ram[P8_SCREEN + (uint16_t)(y * 64 + (x >> 1))];
   return (x & 1) ? (uint8_t)(b >> 4) : (uint8_t)(b & 0x0F);
 }
 
-/* one camera-relative, clipped, draw-palette-mapped pixel */
-static void draw_pixel(int x, int y, uint8_t c)
+/* shape pixel: camera + clip + fill pattern + draw palette. The fill
+** pattern selects the low (bit 0) or high (bit 1) nibble of the pen
+** value; with the 0x5f33 transparency flag, pattern-1 pixels are
+** skipped. VERIFY: draw palette assumed to apply to both nibbles. */
+void p8i_shape_plot(int x, int y, int col)
 {
-  x -= cam_x();
-  y -= cam_y();
+  uint8_t c;
+  x -= p8i_cam_x();
+  y -= p8i_cam_y();
   if (x < p8_ram[P8_DS_CLIP_X0] || x >= p8_ram[P8_DS_CLIP_X1] ||
       y < p8_ram[P8_DS_CLIP_Y0] || y >= p8_ram[P8_DS_CLIP_Y1])
     return;
-  screen_set(x, y, (uint8_t)(p8_ram[P8_DS_DRAWPAL + (c & 0x0F)] & 0x0F));
+  {
+    unsigned int pat = (unsigned int)p8_ram[0x5f31] |
+                       ((unsigned int)p8_ram[0x5f32] << 8);
+    if (pat) {
+      int bit = (pat >> (15 - ((y & 3) * 4 + (x & 3)))) & 1;
+      if (bit) {
+        if (p8_ram[0x5f33] & 1)
+          return; /* transparent secondary */
+        c = (uint8_t)((col >> 4) & 0x0F);
+      } else {
+        c = (uint8_t)(col & 0x0F);
+      }
+    } else {
+      c = (uint8_t)(col & 0x0F);
+    }
+  }
+  p8i_screen_set(x, y, (uint8_t)(p8_ram[P8_DS_DRAWPAL + c] & 0x0F));
+}
+
+/* sprite pixel: camera + clip + draw palette with transparency bit */
+void p8i_sprite_plot(int x, int y, uint8_t c)
+{
+  uint8_t m = p8_ram[P8_DS_DRAWPAL + (c & 0x0F)];
+  if (m & 0x10)
+    return; /* transparent color */
+  x -= p8i_cam_x();
+  y -= p8i_cam_y();
+  if (x < p8_ram[P8_DS_CLIP_X0] || x >= p8_ram[P8_DS_CLIP_X1] ||
+      y < p8_ram[P8_DS_CLIP_Y0] || y >= p8_ram[P8_DS_CLIP_Y1])
+    return;
+  p8i_screen_set(x, y, (uint8_t)(m & 0x0F));
+}
+
+uint8_t p8i_sheet_get(int x, int y)
+{
+  uint8_t b;
+  if (x < 0 || x > 127 || y < 0 || y > 127)
+    return 0;
+  b = p8_ram[P8_GFX + (unsigned int)(y * 64 + (x >> 1))];
+  return (x & 1) ? (uint8_t)(b >> 4) : (uint8_t)(b & 0x0F);
+}
+
+void p8i_sheet_set(int x, int y, uint8_t c)
+{
+  uint8_t *b;
+  if (x < 0 || x > 127 || y < 0 || y > 127)
+    return;
+  b = &p8_ram[P8_GFX + (unsigned int)(y * 64 + (x >> 1))];
+  if (x & 1)
+    *b = (uint8_t)((*b & 0x0F) | (c << 4));
+  else
+    *b = (uint8_t)((*b & 0xF0) | c);
 }
 
 /* --- API --- */
 
 static int api_cls(lua_State *L)
 {
-  uint8_t c = (uint8_t)(p8_optint(L, 1, 0) & 0x0F);
+  uint8_t c = (uint8_t)(p8a_optint(L, 1, 0) & 0x0F);
   memset(&p8_ram[P8_SCREEN], c | (c << 4), 0x2000);
   p8_ram[P8_DS_CURS_X] = 0;
   p8_ram[P8_DS_CURS_Y] = 0;
@@ -98,22 +155,22 @@ static int api_cls(lua_State *L)
 
 static int api_pset(lua_State *L)
 {
-  int x = p8_toint(L, 1);
-  int y = p8_toint(L, 2);
+  int x = p8a_int(L, 1);
+  int y = p8a_int(L, 2);
   if (!lua_isnoneornil(L, 3))
-    p8_ram[P8_DS_PEN] = (uint8_t)(p8_toint(L, 3) & 0xFF);
-  draw_pixel(x, y, p8_ram[P8_DS_PEN]);
+    p8_ram[P8_DS_PEN] = (uint8_t)(p8a_int(L, 3) & 0xFF);
+  p8i_shape_plot(x, y, p8_ram[P8_DS_PEN]);
   return 0;
 }
 
 static int api_pget(lua_State *L)
 {
   /* VERIFY: camera applied to pget (0.2.x behavior) */
-  int x = p8_toint(L, 1) - cam_x();
-  int y = p8_toint(L, 2) - cam_y();
+  int x = p8a_int(L, 1) - p8i_cam_x();
+  int y = p8a_int(L, 2) - p8i_cam_y();
   uint8_t c = 0;
   if (x >= 0 && x < 128 && y >= 0 && y < 128)
-    c = screen_get(x, y);
+    c = p8i_screen_get(x, y);
   lua_pushnumber(L, (lua_Number)p8fix_fromint(c));
   return 1;
 }
@@ -121,15 +178,15 @@ static int api_pget(lua_State *L)
 static int api_color(lua_State *L)
 {
   uint8_t old = p8_ram[P8_DS_PEN];
-  p8_ram[P8_DS_PEN] = (uint8_t)(p8_optint(L, 1, 6) & 0xFF);
+  p8_ram[P8_DS_PEN] = (uint8_t)(p8a_optint(L, 1, 6) & 0xFF);
   lua_pushnumber(L, (lua_Number)p8fix_fromint(old));
   return 1;
 }
 
 static int api_camera(lua_State *L)
 {
-  int x = p8_optint(L, 1, 0);
-  int y = p8_optint(L, 2, 0);
+  int x = p8a_optint(L, 1, 0);
+  int y = p8a_optint(L, 2, 0);
   p8_ram[P8_DS_CAM_X] = (uint8_t)(x & 0xFF);
   p8_ram[P8_DS_CAM_X + 1] = (uint8_t)((x >> 8) & 0xFF);
   p8_ram[P8_DS_CAM_Y] = (uint8_t)(y & 0xFF);
@@ -145,8 +202,8 @@ static int api_clip(lua_State *L)
     p8_ram[P8_DS_CLIP_X1] = 128;
     p8_ram[P8_DS_CLIP_Y1] = 128;
   } else {
-    int x = p8_toint(L, 1), y = p8_toint(L, 2);
-    int w = p8_toint(L, 3), h = p8_toint(L, 4);
+    int x = p8a_int(L, 1), y = p8a_int(L, 2);
+    int w = p8a_int(L, 3), h = p8a_int(L, 4);
     if (x < 0) x = 0;
     if (y < 0) y = 0;
     p8_ram[P8_DS_CLIP_X0] = (uint8_t)x;
@@ -170,13 +227,13 @@ static int api_btn(lua_State *L)
 {
   if (lua_isnoneornil(L, 1)) {
     /* no args: bitmask of both players (p1 in bits 8+) */
-    lua_pushnumber(L, (lua_Number)p8fix_fromint((long)(buttons[0] | ((uint32_t)buttons[1] << 8))));
+    lua_pushnumber(L, (lua_Number)p8fix_fromint((long)(p8i_buttons[0] | ((uint32_t)p8i_buttons[1] << 8))));
     return 1;
   }
   {
-    int i = p8_toint(L, 1);
-    int p = p8_optint(L, 2, 0) & 1;
-    lua_pushboolean(L, (buttons[p] >> (i & 7)) & 1);
+    int i = p8a_int(L, 1);
+    int p = p8a_optint(L, 2, 0) & 1;
+    lua_pushboolean(L, (p8i_buttons[p] >> (i & 7)) & 1);
     return 1;
   }
 }
@@ -406,8 +463,8 @@ static int api_count(lua_State *L)
 
 static int api_peek(lua_State *L)
 {
-  unsigned int a = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
-  int n = lua_isnoneornil(L, 2) ? 1 : p8_toint(L, 2);
+  unsigned int a = (unsigned int)p8a_int(L, 1) & 0xFFFFu;
+  int n = lua_isnoneornil(L, 2) ? 1 : p8a_int(L, 2);
   int i;
   if (n > 8192) n = 8192;
   lua_checkstack(L, n);
@@ -418,10 +475,10 @@ static int api_peek(lua_State *L)
 
 static int api_poke(lua_State *L)
 {
-  unsigned int a = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
+  unsigned int a = (unsigned int)p8a_int(L, 1) & 0xFFFFu;
   int argc = lua_gettop(L), i;
   for (i = 2; i <= argc; i++)
-    p8_ram[(a + (unsigned int)(i - 2)) & 0xFFFFu] = (uint8_t)p8_toint(L, i);
+    p8_ram[(a + (unsigned int)(i - 2)) & 0xFFFFu] = (uint8_t)p8a_int(L, i);
   if (argc == 1)
     p8_ram[a] = 0;
   return 0;
@@ -429,7 +486,7 @@ static int api_poke(lua_State *L)
 
 static int api_peek2(lua_State *L)
 {
-  unsigned int a = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
+  unsigned int a = (unsigned int)p8a_int(L, 1) & 0xFFFFu;
   long v = (long)p8_ram[a] | ((long)p8_ram[(a + 1) & 0xFFFFu] << 8);
   if (v >= 0x8000L) v -= 0x10000L; /* signed 16-bit */
   lua_pushnumber(L, (lua_Number)p8fix_fromint(v));
@@ -438,8 +495,8 @@ static int api_peek2(lua_State *L)
 
 static int api_poke2(lua_State *L)
 {
-  unsigned int a = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
-  long v = p8_toint(L, 2);
+  unsigned int a = (unsigned int)p8a_int(L, 1) & 0xFFFFu;
+  long v = p8a_int(L, 2);
   p8_ram[a] = (uint8_t)(v & 0xFF);
   p8_ram[(a + 1) & 0xFFFFu] = (uint8_t)((v >> 8) & 0xFF);
   return 0;
@@ -447,7 +504,7 @@ static int api_poke2(lua_State *L)
 
 static int api_peek4(lua_State *L)
 {
-  unsigned int a = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
+  unsigned int a = (unsigned int)p8a_int(L, 1) & 0xFFFFu;
   uint32_t v = (uint32_t)p8_ram[a] | ((uint32_t)p8_ram[(a + 1) & 0xFFFFu] << 8) |
                ((uint32_t)p8_ram[(a + 2) & 0xFFFFu] << 16) |
                ((uint32_t)p8_ram[(a + 3) & 0xFFFFu] << 24);
@@ -457,7 +514,7 @@ static int api_peek4(lua_State *L)
 
 static int api_poke4(lua_State *L)
 {
-  unsigned int a = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
+  unsigned int a = (unsigned int)p8a_int(L, 1) & 0xFFFFu;
   uint32_t v = (uint32_t)(long)lua_tonumber(L, 2); /* raw 16.16 */
   p8_ram[a] = (uint8_t)(v & 0xFF);
   p8_ram[(a + 1) & 0xFFFFu] = (uint8_t)((v >> 8) & 0xFF);
@@ -468,9 +525,9 @@ static int api_poke4(lua_State *L)
 
 static int api_memcpy(lua_State *L)
 {
-  unsigned int d = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
-  unsigned int s = (unsigned int)p8_toint(L, 2) & 0xFFFFu;
-  long n = p8_toint(L, 3);
+  unsigned int d = (unsigned int)p8a_int(L, 1) & 0xFFFFu;
+  unsigned int s = (unsigned int)p8a_int(L, 2) & 0xFFFFu;
+  long n = p8a_int(L, 3);
   long i;
   for (i = 0; i < n; i++) /* byte loop: overlapping copies match PICO-8 */
     p8_ram[(d + (unsigned int)i) & 0xFFFFu] = p8_ram[(s + (unsigned int)i) & 0xFFFFu];
@@ -479,9 +536,9 @@ static int api_memcpy(lua_State *L)
 
 static int api_memset(lua_State *L)
 {
-  unsigned int d = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
-  uint8_t v = (uint8_t)p8_toint(L, 2);
-  long n = p8_toint(L, 3);
+  unsigned int d = (unsigned int)p8a_int(L, 1) & 0xFFFFu;
+  uint8_t v = (uint8_t)p8a_int(L, 2);
+  long n = p8a_int(L, 3);
   long i;
   for (i = 0; i < n; i++)
     p8_ram[(d + (unsigned int)i) & 0xFFFFu] = v;
@@ -490,7 +547,12 @@ static int api_memset(lua_State *L)
 
 static int api_printh(lua_State *L)
 {
-  const char *s = luaL_tolstring(L, 1, NULL);
+  const char *s;
+  if (lua_isnone(L, 1)) { /* zero args (e.g. printh(tonum("x"))) */
+    fprintf(stderr, "\n");
+    return 0;
+  }
+  s = luaL_tolstring(L, 1, NULL);
   fprintf(stderr, "%s\n", s);
   lua_pop(L, 1);
   return 0;
@@ -532,4 +594,5 @@ void p8_open(lua_State *L)
   const luaL_Reg *r;
   for (r = p8_funcs; r->name; r++)
     lua_register(L, r->name, r->func);
+  p8gfx_open(L);
 }

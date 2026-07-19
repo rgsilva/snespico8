@@ -12,7 +12,9 @@ print(shl(1,4)) print(shr(256,4)) print(lshr(-32768,1)) print(rotl(1,4)) print(r
 print(tostr(1.5)) print(tostr(1.5,true)) print(tostr(1.5,2)) print(tostr(1.5,3))
 print(tostr(-0.0001)) print(tostr(true)) print(tostr(nil)) print(tostr())
 print(tonum("1.5")) print(tonum("0x10")) print(tonum("abc")) print(tonum("ff",1)) print(tonum(true))
-print(chr(72,105)) print(ord("Hi")) print(ord("Hi",2)) print(ord("Hello",2,3)) print(#"hello")
+print(chr(72,105)) print(ord("Hi")) print(ord("Hi",2))
+local o1,o2,o3 = ord("Hello",2,3) print(o1) print(o2) print(o3)
+print(#"hello")
 print(split("a,b,c")) -- table address differs; test contents instead
 local t = split("10,20,hello")
 print(t[1]) print(t[2]) print(t[3]) print(#t)

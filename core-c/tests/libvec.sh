@@ -7,9 +7,10 @@ Z8LUA=../tools/z8lua/z8lua
 
 {
   printf 'pico-8 cartridge\nversion 42\n__lua__\n'
+  printf 'print = printh -- M2: print draws to the screen; route to stderr\n'
   cat tests/libvec.lua
 } > build/libvec.p8
-./build/runp8 build/libvec.p8 -n 0 2>/dev/null | grep -v '^DONE' | sed 's/table: 0x[0-9a-f]*/table/' > build/libvec_ours.txt
+./build/runp8 build/libvec.p8 -n 0 2>&1 >/dev/null | grep -v '^DONE' | sed 's/table: 0x[0-9a-f]*/table/' > build/libvec_ours.txt
 
 "$Z8LUA" tests/libvec.lua | sed 's/table: 0x[0-9a-f]*/table/' > build/libvec_z8.txt
 

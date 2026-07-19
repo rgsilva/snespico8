@@ -343,6 +343,20 @@ static int pico8_split(lua_State *l) {
     return 1;
 }
 
+/* unpack(t, [i], [j]): PICO-8 global (Lua's table.unpack; ltablib is
+   not linked) */
+static int pico8_unpack(lua_State *l) {
+    long i = lua_isnoneornil(l, 2) ? 1 : p8fix_toint(tobits(l, 2));
+    long j = lua_isnoneornil(l, 3) ? (long)lua_rawlen(l, 1) : p8fix_toint(tobits(l, 3));
+    long n = j - i + 1, k;
+    if (n <= 0) return 0;
+    if (n > 2000 || !lua_checkstack(l, (int)n))
+        return luaL_error(l, "too many results to unpack");
+    for (k = i; k <= j; k++)
+        lua_rawgeti(l, 1, (int)k);
+    return (int)n;
+}
+
 static const luaL_Reg pico8lib[] = {
   {"max",   pico8_max},
   {"min",   pico8_min},
@@ -370,6 +384,7 @@ static const luaL_Reg pico8lib[] = {
   {"chr",   pico8_chr},
   {"ord",   pico8_ord},
   {"split", pico8_split},
+  {"unpack", pico8_unpack},
   {NULL, NULL}
 };
 
