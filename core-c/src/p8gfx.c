@@ -532,18 +532,22 @@ static void screen_scroll(int lines)
 static int api_print(lua_State *L)
 {
   size_t len, k;
+  /* count args BEFORE luaL_tolstring pushes its copy: the copy sits at
+     argc+1 and must not be mistaken for the color argument (the bug was
+     print("ab") coercing "ab" to pen color 0 = invisible text) */
+  int argc = lua_gettop(L);
   const char *s = luaL_tolstring(L, 1, &len);
-  int cursor_mode = lua_isnoneornil(L, 3);
+  int cursor_mode = (argc < 3) || lua_isnil(L, 3);
   int x, y, home;
   if (cursor_mode) {
     x = p8_ram[P8_DS_CURS_X];
     y = p8_ram[P8_DS_CURS_Y];
-    if (!lua_isnoneornil(L, 2))
+    if (argc >= 2 && !lua_isnil(L, 2))
       p8_ram[P8_DS_PEN] = (uint8_t)(p8a_int(L, 2) & 0xFF);
   } else {
     x = p8a_int(L, 2);
     y = p8a_int(L, 3);
-    if (!lua_isnoneornil(L, 4))
+    if (argc >= 4 && !lua_isnil(L, 4))
       p8_ram[P8_DS_PEN] = (uint8_t)(p8a_int(L, 4) & 0xFF);
   }
   home = x;

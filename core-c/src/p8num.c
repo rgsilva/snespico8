@@ -268,7 +268,7 @@ long p8_str2fix(const char *s, char **endptr)
     if (*p == '.') {
       p++;
       while (*p >= '0' && *p <= '9') {
-        if (scale < 100000000u) { /* cap at 8 digits, ignore the rest */
+        if (scale < 1000000u) { /* real PICO-8 reads at most 6 digits */
           f = f * 10u + (uint32_t)(*p - '0');
           scale *= 10u;
         }
@@ -277,12 +277,11 @@ long p8_str2fix(const char *s, char **endptr)
       }
     }
     if (scale > 1) {
-      /* frac = round(f * 65536 / scale) via the 48-bit divider */
-      uint32_t hi = f >> 16;
-      uint32_t lo = (f << 16) + scale / 2u;
-      if (lo < scale / 2u)
-        hi++; /* carry */
-      frac = udiv48(hi, lo, scale);
+      /* frac = trunc(f * 65536 / scale): real PICO-8 TRUNCATES decimal
+         fractions (0.0001 -> raw 6, 0.1 -> 0x1999, 0.33 -> 0x547a,
+         6-digit cap pinned by tostr(x,1) raw dumps on v0.2.6b; z8lua
+         rounds and diverges from the real console here) */
+      frac = udiv48(f >> 16, f << 16, scale);
     }
   }
   if (!any) {
