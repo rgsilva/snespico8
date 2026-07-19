@@ -33,6 +33,8 @@ static int p8_optint(lua_State *L, int idx, int def)
   return p8_toint(L, idx);
 }
 
+static void rnd_seed(uint32_t seed);
+
 void p8_reset(void)
 {
   int i;
@@ -44,6 +46,7 @@ void p8_reset(void)
   p8_ram[P8_DS_CLIP_X1] = 128;
   p8_ram[P8_DS_CLIP_Y1] = 128;
   p8_ram[P8_DS_PEN] = 6;
+  rnd_seed(0);
   frames = 0;
 }
 
@@ -188,6 +191,303 @@ static int api_time(lua_State *L)
   return 1;
 }
 
+/* --- PICO-8 PRNG (documented in BBS tid=51113): two 32-bit words at
+   0x5f44 (lo) / 0x5f48 (hi), little-endian in RAM. Deterministic and
+   peekable, which is exactly what parity testing wants.
+   VERIFY the srand warmup constant behavior against real PICO-8. */
+
+static uint32_t rnd_get(unsigned int off)
+{
+  return (uint32_t)p8_ram[off] | ((uint32_t)p8_ram[off + 1] << 8) |
+         ((uint32_t)p8_ram[off + 2] << 16) | ((uint32_t)p8_ram[off + 3] << 24);
+}
+
+static void rnd_put(unsigned int off, uint32_t v)
+{
+  p8_ram[off] = (uint8_t)(v & 0xFF);
+  p8_ram[off + 1] = (uint8_t)((v >> 8) & 0xFF);
+  p8_ram[off + 2] = (uint8_t)((v >> 16) & 0xFF);
+  p8_ram[off + 3] = (uint8_t)((v >> 24) & 0xFF);
+}
+
+static uint32_t rnd_step(void)
+{
+  uint32_t lo = rnd_get(P8_HW_RNDLO);
+  uint32_t hi = rnd_get(P8_HW_RNDLO + 4);
+  hi = ((hi << 16) | (hi >> 16)) + lo;
+  lo += hi;
+  rnd_put(P8_HW_RNDLO, lo);
+  rnd_put(P8_HW_RNDLO + 4, hi);
+  return hi;
+}
+
+static void rnd_seed(uint32_t seed)
+{
+  int i;
+  if (seed == 0) {
+    rnd_put(P8_HW_RNDLO, 0xdeadbeefu);
+    rnd_put(P8_HW_RNDLO + 4, 0x60009755u);
+  } else {
+    rnd_put(P8_HW_RNDLO, seed);
+    rnd_put(P8_HW_RNDLO + 4, seed ^ 0xbead29bau);
+    for (i = 0; i < 32; i++)
+      rnd_step();
+  }
+}
+
+static int api_rnd(lua_State *L)
+{
+  if (lua_istable(L, 1)) {
+    /* rnd(tbl): random element of the sequence part */
+    long n = (long)lua_rawlen(L, 1);
+    if (n == 0)
+      return 0;
+    lua_rawgeti(L, 1, (int)(rnd_step() % (uint32_t)n) + 1);
+    return 1;
+  }
+  {
+    uint32_t limit = 0x10000u; /* default: [0,1) */
+    if (!lua_isnoneornil(L, 1))
+      limit = (uint32_t)(long)lua_tonumber(L, 1);
+    lua_pushnumber(L, limit ? (lua_Number)(long)(int32_t)(rnd_step() % limit) : 0);
+    return 1;
+  }
+}
+
+static int api_srand(lua_State *L)
+{
+  rnd_seed((uint32_t)(long)lua_tonumber(L, 1));
+  return 0;
+}
+
+/* --- table helpers (PICO-8 built-ins; not part of z8lua) --- */
+
+static int api_add(lua_State *L)
+{
+  long n, i, k;
+  if (!lua_istable(L, 1))
+    return 0;
+  n = (long)lua_rawlen(L, 1);
+  i = lua_isnoneornil(L, 3) ? n + 1 : p8fix_toint((long)lua_tonumber(L, 3));
+  if (i < 1) i = 1;
+  if (i > n + 1) i = n + 1;
+  for (k = n; k >= i; k--) { /* shift up */
+    lua_rawgeti(L, 1, (int)k);
+    lua_rawseti(L, 1, (int)(k + 1));
+  }
+  lua_pushvalue(L, 2);
+  lua_rawseti(L, 1, (int)i);
+  lua_pushvalue(L, 2);
+  return 1;
+}
+
+static void tbl_remove_at(lua_State *L, long i, long n)
+{
+  long k;
+  for (k = i; k < n; k++) { /* shift down */
+    lua_rawgeti(L, 1, (int)(k + 1));
+    lua_rawseti(L, 1, (int)k);
+  }
+  lua_pushnil(L);
+  lua_rawseti(L, 1, (int)n);
+}
+
+static int api_del(lua_State *L)
+{
+  long n, i;
+  if (!lua_istable(L, 1))
+    return 0;
+  n = (long)lua_rawlen(L, 1);
+  for (i = 1; i <= n; i++) {
+    lua_rawgeti(L, 1, (int)i);
+    if (lua_rawequal(L, -1, 2)) {
+      tbl_remove_at(L, i, n); /* removed value stays on the stack */
+      return 1;
+    }
+    lua_pop(L, 1);
+  }
+  return 0;
+}
+
+static int api_deli(lua_State *L)
+{
+  long n, i;
+  if (!lua_istable(L, 1))
+    return 0;
+  n = (long)lua_rawlen(L, 1);
+  if (n == 0)
+    return 0;
+  i = lua_isnoneornil(L, 2) ? n : p8fix_toint((long)lua_tonumber(L, 2));
+  if (i < 1 || i > n)
+    return 0;
+  lua_rawgeti(L, 1, (int)i);
+  tbl_remove_at(L, i, n);
+  return 1;
+}
+
+/* all(t): stateful iterator; robust-ish to deletion of the current
+   element (advances only when the slot still holds the last value).
+   VERIFY edge cases against real PICO-8. */
+static int all_iter(lua_State *L)
+{
+  long i = p8fix_toint((long)lua_tonumber(L, lua_upvalueindex(2)));
+  long n = (long)lua_rawlen(L, lua_upvalueindex(1));
+  lua_rawgeti(L, lua_upvalueindex(1), (int)i);
+  if (!lua_rawequal(L, -1, lua_upvalueindex(3)))
+    i--; /* current slot changed (deletion): revisit it */
+  lua_pop(L, 1);
+  do {
+    i++;
+    if (i > n)
+      return 0;
+    lua_rawgeti(L, lua_upvalueindex(1), (int)i);
+  } while (lua_isnil(L, -1));
+  lua_pushnumber(L, (lua_Number)p8fix_fromint(i));
+  lua_replace(L, lua_upvalueindex(2));
+  lua_pushvalue(L, -1);
+  lua_replace(L, lua_upvalueindex(3));
+  return 1;
+}
+
+static int api_all(lua_State *L)
+{
+  if (!lua_istable(L, 1)) {
+    lua_pushcfunction(L, NULL); /* unreachable; keeps stack sane */
+    return 0;
+  }
+  lua_pushvalue(L, 1);
+  lua_pushnumber(L, 0);
+  lua_pushnil(L);
+  lua_pushcclosure(L, all_iter, 3);
+  return 1;
+}
+
+static int api_foreach(lua_State *L)
+{
+  long i = 0, n;
+  if (!lua_istable(L, 1))
+    return 0;
+  n = (long)lua_rawlen(L, 1);
+  for (i = 1; i <= n; i++) {
+    lua_rawgeti(L, 1, (int)i);
+    if (lua_isnil(L, -1)) {
+      lua_pop(L, 1);
+      continue;
+    }
+    lua_pushvalue(L, 2);
+    lua_insert(L, -2);
+    lua_call(L, 1, 0);
+    n = (long)lua_rawlen(L, 1); /* table may shrink during iteration */
+  }
+  return 0;
+}
+
+static int api_count(lua_State *L)
+{
+  long n, i, c = 0;
+  if (!lua_istable(L, 1))
+    return 0;
+  n = (long)lua_rawlen(L, 1);
+  if (lua_isnoneornil(L, 2)) {
+    lua_pushnumber(L, (lua_Number)p8fix_fromint(n));
+    return 1;
+  }
+  for (i = 1; i <= n; i++) {
+    lua_rawgeti(L, 1, (int)i);
+    if (lua_rawequal(L, -1, 2))
+      c++;
+    lua_pop(L, 1);
+  }
+  lua_pushnumber(L, (lua_Number)p8fix_fromint(c));
+  return 1;
+}
+
+/* --- memory API: function forms of @/%/$ plus poke/memcpy/memset --- */
+
+static int api_peek(lua_State *L)
+{
+  unsigned int a = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
+  int n = lua_isnoneornil(L, 2) ? 1 : p8_toint(L, 2);
+  int i;
+  if (n > 8192) n = 8192;
+  lua_checkstack(L, n);
+  for (i = 0; i < n; i++)
+    lua_pushnumber(L, (lua_Number)p8fix_fromint(p8_ram[(a + (unsigned int)i) & 0xFFFFu]));
+  return n < 0 ? 0 : n;
+}
+
+static int api_poke(lua_State *L)
+{
+  unsigned int a = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
+  int argc = lua_gettop(L), i;
+  for (i = 2; i <= argc; i++)
+    p8_ram[(a + (unsigned int)(i - 2)) & 0xFFFFu] = (uint8_t)p8_toint(L, i);
+  if (argc == 1)
+    p8_ram[a] = 0;
+  return 0;
+}
+
+static int api_peek2(lua_State *L)
+{
+  unsigned int a = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
+  long v = (long)p8_ram[a] | ((long)p8_ram[(a + 1) & 0xFFFFu] << 8);
+  if (v >= 0x8000L) v -= 0x10000L; /* signed 16-bit */
+  lua_pushnumber(L, (lua_Number)p8fix_fromint(v));
+  return 1;
+}
+
+static int api_poke2(lua_State *L)
+{
+  unsigned int a = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
+  long v = p8_toint(L, 2);
+  p8_ram[a] = (uint8_t)(v & 0xFF);
+  p8_ram[(a + 1) & 0xFFFFu] = (uint8_t)((v >> 8) & 0xFF);
+  return 0;
+}
+
+static int api_peek4(lua_State *L)
+{
+  unsigned int a = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
+  uint32_t v = (uint32_t)p8_ram[a] | ((uint32_t)p8_ram[(a + 1) & 0xFFFFu] << 8) |
+               ((uint32_t)p8_ram[(a + 2) & 0xFFFFu] << 16) |
+               ((uint32_t)p8_ram[(a + 3) & 0xFFFFu] << 24);
+  lua_pushnumber(L, (lua_Number)(long)(int32_t)v); /* raw 16.16 */
+  return 1;
+}
+
+static int api_poke4(lua_State *L)
+{
+  unsigned int a = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
+  uint32_t v = (uint32_t)(long)lua_tonumber(L, 2); /* raw 16.16 */
+  p8_ram[a] = (uint8_t)(v & 0xFF);
+  p8_ram[(a + 1) & 0xFFFFu] = (uint8_t)((v >> 8) & 0xFF);
+  p8_ram[(a + 2) & 0xFFFFu] = (uint8_t)((v >> 16) & 0xFF);
+  p8_ram[(a + 3) & 0xFFFFu] = (uint8_t)((v >> 24) & 0xFF);
+  return 0;
+}
+
+static int api_memcpy(lua_State *L)
+{
+  unsigned int d = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
+  unsigned int s = (unsigned int)p8_toint(L, 2) & 0xFFFFu;
+  long n = p8_toint(L, 3);
+  long i;
+  for (i = 0; i < n; i++) /* byte loop: overlapping copies match PICO-8 */
+    p8_ram[(d + (unsigned int)i) & 0xFFFFu] = p8_ram[(s + (unsigned int)i) & 0xFFFFu];
+  return 0;
+}
+
+static int api_memset(lua_State *L)
+{
+  unsigned int d = (unsigned int)p8_toint(L, 1) & 0xFFFFu;
+  uint8_t v = (uint8_t)p8_toint(L, 2);
+  long n = p8_toint(L, 3);
+  long i;
+  for (i = 0; i < n; i++)
+    p8_ram[(d + (unsigned int)i) & 0xFFFFu] = v;
+  return 0;
+}
+
 static int api_printh(lua_State *L)
 {
   const char *s = luaL_tolstring(L, 1, NULL);
@@ -208,6 +508,22 @@ static const luaL_Reg p8_funcs[] = {
   { "time", api_time },
   { "t", api_time },
   { "printh", api_printh },
+  { "peek", api_peek },
+  { "poke", api_poke },
+  { "peek2", api_peek2 },
+  { "poke2", api_poke2 },
+  { "peek4", api_peek4 },
+  { "poke4", api_poke4 },
+  { "memcpy", api_memcpy },
+  { "memset", api_memset },
+  { "rnd", api_rnd },
+  { "srand", api_srand },
+  { "add", api_add },
+  { "del", api_del },
+  { "deli", api_deli },
+  { "all", api_all },
+  { "foreach", api_foreach },
+  { "count", api_count },
   { NULL, NULL }
 };
 

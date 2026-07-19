@@ -3,7 +3,7 @@
 CC ?= cc
 CFLAGS = -O2 -std=c99 -Wall -Wextra -Wno-unused-parameter -Isrc
 
-LUA = lapi lauxlib lbaselib lcode lctype lcorolib ldebug ldo ldump lfunc \
+LUA = lapi lauxlib lbaselib lcode lctype lcorolib ldebug ldo ldump lfunc lpico8lib \
       lgc llex lmem lobject lopcodes lparser lstate lstring ltable ltm \
       lundump lvm lzio
 

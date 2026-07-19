@@ -134,6 +134,13 @@ LUA_API lua_CFunction lua_atpanic (lua_State *L, lua_CFunction panicf) {
 }
 
 
+LUA_API void lua_setpico8memory (lua_State *L, unsigned char const *p) {
+  lua_lock(L);
+  G(L)->pico8memory = p;
+  lua_unlock(L);
+}
+
+
 LUA_API const lua_Number *lua_version (lua_State *L) {
   static const lua_Number version = LUA_VERSION_NUM;
   if (L == NULL) return &version;
@@ -294,7 +301,8 @@ LUA_API void lua_arith (lua_State *L, int op) {
   StkId o1;  /* 1st operand */
   StkId o2;  /* 2nd operand */
   lua_lock(L);
-  if (op != LUA_OPUNM) /* all other operations expect two operands */
+  if (op != LUA_OPUNM && op != LUA_OPBNOT && op != LUA_OPPEEK &&
+      op != LUA_OPPEEK2 && op != LUA_OPPEEK4) /* all other operations expect two operands */
     api_checknelems(L, 2);
   else {  /* for unary minus, add fake 2nd operand */
     api_checknelems(L, 1);
@@ -304,7 +312,7 @@ LUA_API void lua_arith (lua_State *L, int op) {
   o1 = L->top - 2;
   o2 = L->top - 1;
   if (ttisnumber(o1) && ttisnumber(o2)) {
-    setnvalue(o1, luaO_arith(op, nvalue(o1), nvalue(o2)));
+    setnvalue(o1, luaO_arith(L, op, nvalue(o1), nvalue(o2)));
   }
   else
     luaV_arith(L, o1, o1, o2, cast(TMS, op - LUA_OPADD + TM_ADD));

@@ -206,8 +206,19 @@ tail (phased), byte-exact `^` vs real PICO-8 (matches our oracle instead).
         `tests/numvec.sh` — **48/48 expressions byte-identical** incl.
         x/0, wrap, mod signs and x%0==0, (-2)^0.5==0, 2^-0.5.
         Framebuffer hash unchanged across the double→fix32 swap.
-  - [ ] M1c: P8 dialect syntax + pico8 lib (lexer ops, +=, short-if, ?,
-        trigtables, flr/sin/cos/atan2/band/rnd-at-0x5f44/tostr/...)
+  - [x] M1c: **P8 dialect + pico8 lib, oracle-exact.** z8lua's dialect
+        diff (v5-2..pico8) applied to the vendored tree and de-C++'d;
+        C ports: lpico8lib.c (trigtable sin/cos/atan2 — atan2's int64
+        math redone with 48-bit dividers —, tostr/tonum/chr/ord/split,
+        plus `sub` which z8lua lacks), luaV_peek widened to 64 KB.
+        Our own (z8lua has none): add/del/deli/all/foreach/count,
+        rnd/srand with the documented PRNG state at 0x5f44 (in RAM,
+        peekable, deterministic — VERIFY sequence vs real PICO-8),
+        peek/poke/2/4, memcpy/memset, cocreate/coresume/costatus/yield
+        aliases. Vector suites vs the z8lua oracle: `tests/numvec.sh`
+        48/48, `tests/dialectvec.sh` 27/27 (+= family, \, ^^, <<>, >><,
+        >>>, short-if, !=, ?), `tests/libvec.sh` 72/72. Cart hash still
+        c5a1d7e5 through it all.
   - [ ] M1.5: ops/frame measured over a cart corpus → SNES projection
 - [ ] M2: full gfx API on PC (spr/sspr/map/pal/palt/fillp/clip/camera/
       P8SCII print subset, peek/poke/memcpy semantics); real BBS carts run
