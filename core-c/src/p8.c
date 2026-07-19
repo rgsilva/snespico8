@@ -269,6 +269,12 @@ static void rnd_put(unsigned int off, uint32_t v)
 
 static uint32_t rnd_step(void)
 {
+  /* BBS tid=51113 formulation. Seeded DRAW STREAMS are verified exact
+     against real PICO-8 v0.2.6b (srand(42) -> 0xec81,0x0866; srand(0) ->
+     0x8474), which is what carts consume. The word layout at 0x5f44
+     diverges from real PICO-8 (its state chain has an extra subtlety we
+     have not fully pinned; see docs/real-pico8-oracle.md) — only carts
+     that peek/poke 0x5f44 directly would notice. VERIFY if one does. */
   uint32_t lo = rnd_get(P8_HW_RNDLO);
   uint32_t hi = rnd_get(P8_HW_RNDLO + 4);
   hi = ((hi << 16) | (hi >> 16)) + lo;
@@ -280,16 +286,16 @@ static uint32_t rnd_step(void)
 
 static void rnd_seed(uint32_t seed)
 {
+  /* srand(0) is srand(0xdeadbeef): same general path incl. warmup
+     (0xdeadbeef ^ 0xbead29ba = 0x60009755, the BBS constants). Verified
+     states/draws vs real PICO-8 for seeds 0, 42, 0x1234.5678. */
   int i;
-  if (seed == 0) {
-    rnd_put(P8_HW_RNDLO, 0xdeadbeefu);
-    rnd_put(P8_HW_RNDLO + 4, 0x60009755u);
-  } else {
-    rnd_put(P8_HW_RNDLO, seed);
-    rnd_put(P8_HW_RNDLO + 4, seed ^ 0xbead29bau);
-    for (i = 0; i < 32; i++)
-      rnd_step();
-  }
+  if (seed == 0)
+    seed = 0xdeadbeefu;
+  rnd_put(P8_HW_RNDLO, seed);
+  rnd_put(P8_HW_RNDLO + 4, seed ^ 0xbead29bau);
+  for (i = 0; i < 32; i++)
+    rnd_step();
 }
 
 static int api_rnd(lua_State *L)

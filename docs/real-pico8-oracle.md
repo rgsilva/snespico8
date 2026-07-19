@@ -46,13 +46,17 @@ real byte-for-byte) but holds the state words swapped/differently, so
 arise.) Verified against real states/draws for seeds 42, 0, and raw
 1/2/3 draws pending.
 
-**Pending one-line fix in p8.c (apply after the M2 agent lands, it owns
-the file):** in `rnd_seed`, replace the zero special-case with
-`if (seed == 0) seed = 0xdeadbeefu;` and fall through to the general
-path (constants + 32 warmups). Optionally ALSO switch `rnd_step` to the
-real formulation above so the RAM state at 0x5f44 is bit-identical to
-real PICO-8 (needed for carts that peek/poke the rnd state; output
-streams are unchanged either way).
+**Resolution (applied post-M2 in p8.c):** srand's zero-case fix is in
+(seed 0 -> 0xdeadbeef, general path, 32 warmups) and rnd_step keeps the
+BBS formulation. Seeded DRAW STREAMS are verified byte-exact against
+real PICO-8 (srand(42) -> 0xec81,0x0866; srand(0) -> 0x8474). The pure
+"real step" formulation was tried and reverted: it reproduces poked
+single-step transitions exactly but NOT the seeded chains — real
+PICO-8's seeded state sequence has an additional subtlety (possibly
+range-dependent extra stepping) that is not yet pinned. Consequence:
+our RAM words at 0x5f44/0x5f48 differ from real PICO-8's even though
+draw streams match; only carts that peek/poke the rnd state directly
+would notice (VERIFY if one ever does — revisit with more captures).
 
 ## Captured goldens (scratchpad realvec.p8 / rndprobe*.p8, rerunnable)
 
