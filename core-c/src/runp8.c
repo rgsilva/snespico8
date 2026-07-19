@@ -14,6 +14,8 @@
 #include "lua/lauxlib.h"
 #include "lua/lualib.h"
 
+extern unsigned long p8_vmops;  /* lvm.c, M1.5 measurement */
+
 /* ---- .p8 text cart parsing ---- */
 
 static int hexval(int c)
@@ -131,11 +133,15 @@ static uint32_t fnv1a(const uint8_t *p, size_t n)
   return h;
 }
 
+static unsigned long ops_at_last_flip;
+
 static void on_flip(void *ud)
 {
   (void)ud;
-  printf("FLIP %u %08x\n", (unsigned)p8_frame_count(),
-         (unsigned)fnv1a(&p8_ram[P8_SCREEN], 0x2000));
+  printf("FLIP %u %08x ops=%lu\n", (unsigned)p8_frame_count(),
+         (unsigned)fnv1a(&p8_ram[P8_SCREEN], 0x2000),
+         p8_vmops - ops_at_last_flip);
+  ops_at_last_flip = p8_vmops;
 }
 
 /* ---- PPM dump for eyeballing ---- */
@@ -266,7 +272,11 @@ int main(int argc, char **argv)
     fclose(inf);
   if (ppm)
     dump_ppm(ppm);
-  printf("DONE frames=%u\n", (unsigned)p8_frame_count());
+  {
+    unsigned f = (unsigned)p8_frame_count();
+    printf("DONE frames=%u vmops=%lu ops/frame=%lu\n", f, p8_vmops,
+           f ? p8_vmops / f : 0);
+  }
   free(src);
   lua_close(L);
   return 0;

@@ -222,6 +222,8 @@ static int call_orderTM (lua_State *L, const TValue *p1, const TValue *p2,
 ** masked to 0x7fff, but standalone z8lua has no RAM attached at all) */
 #define PEEK(ram, address) ((ram) ? (ram)[(address) & 0xffffu] : 0)
 
+unsigned long p8_vmops;  /* snespico8: dispatched VM instructions */
+
 lua_Number luaV_peek(struct lua_State *L, lua_Number a, int count)
 {
   unsigned char const *p = G(L)->pico8memory;
@@ -592,6 +594,7 @@ void luaV_execute (lua_State *L) {
   /* main loop of interpreter */
   for (;;) {
     Instruction i = *(ci->u.l.savedpc++);
+    p8_vmops++;  /* snespico8: M1.5 instruction counter */
     StkId ra;
     if ((L->hookmask & (LUA_MASKLINE | LUA_MASKCOUNT)) &&
         (--L->hookcount == 0 || L->hookmask & LUA_MASKLINE)) {

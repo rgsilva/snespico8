@@ -219,7 +219,18 @@ tail (phased), byte-exact `^` vs real PICO-8 (matches our oracle instead).
         48/48, `tests/dialectvec.sh` 27/27 (+= family, \, ^^, <<>, >><,
         >>>, short-if, !=, ?), `tests/libvec.sh` 72/72. Cart hash still
         c5a1d7e5 through it all.
-  - [ ] M1.5: ops/frame measured over a cart corpus → SNES projection
+  - [x] M1.5: **ops/frame MEASURED** (VM instruction counter in lvm.c,
+        per-flip in runp8): Celeste title ~1.5K ops/frame, Celeste
+        GAMEPLAY ~30K ops/frame (peaks ~60K on transitions); API-heavy
+        carts are nearly VM-free (gfx_shapes: 9 ops/frame — drawing
+        happens in C). SNES projection at assumed 65816 VM speeds
+        (measured for real in M3): Celeste gameplay = ~30s/frame @1K
+        ops/sec (-O0 pessimistic), ~10s @3K, ~3s @10K (optimized),
+        ~1s @30K (asm dispatch, dream tier). Celeste title and simple
+        API-driven carts land at ~0.5-2s/frame — and draw-bound carts
+        approach the 6fps display ceiling since their VM load is tiny.
+        Conclusion: "slideshow but alive" confirmed; script-light carts
+        will feel far better than script-heavy ones.
 - [x] M2: **full gfx API on the PC core — Celeste Classic runs.**
       `src/p8gfx.c`: line (with 0x5f3c endpoint state), rect(fill),
       circ(fill), oval(fill), spr (flips, fractional w/h), sspr, map +
