@@ -1,0 +1,14 @@
+# third-party checkouts and toolchains (Calypsi, z8lua, micropython-snes, lua worktree)
+/tools/
+# build outputs
+build/
+*.o
+*.sfc
+*.srm
+*.ppm
+*.lst
+*.map
+# BBS carts are not ours to redistribute
+/carts/*.p8.png
+/carts/*.p8
+.DS_Store

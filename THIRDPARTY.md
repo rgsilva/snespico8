@@ -1,0 +1,19 @@
+# Third-party code and attributions
+
+- `core-c/src/lua/` — Lua 5.2.4, MIT License, Copyright (C) 1994-2015
+  Lua.org, PUC-Rio (vendored from the z8lua repo's `v5-2` branch; local
+  modifications are tagged `snespico8:` in comments).
+- `snes/calypsi/` (header.s, linker.scm, mailbox.c/h) and
+  `snes/tools/raw2sfc.py` — adapted from
+  [micropython-snes](https://github.com/FabianKuebler/micropython-snes),
+  MIT License, Copyright (c) 2026 Fabian Kübler.
+- Dialect semantics are validated against
+  [z8lua](https://github.com/samhocevar/z8lua) (Lua license + Sam
+  Hocevar's patches), used as a host-side oracle only (not shipped).
+- Test-harness patterns (Mesen2 testrunner + Lua, parity methodology)
+  come from the sibling snes86 project (emu8086/).
+- The Calypsi C toolchain (not redistributed here) is free for personal
+  hobby use; see calypsi.cc.
+- PICO-8 is a product of Lexaloffle Games. This project is an unofficial
+  runtime reimplementation; it ships no Lexaloffle assets or carts. The
+  PICO-8 palette and font are CC-0.
