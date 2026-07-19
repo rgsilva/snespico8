@@ -7,6 +7,11 @@ import re
 import sys
 
 
+# Corrections vs current real PICO-8 (v0.2.6b), pinned by rendering each
+# glyph on the real console and diffing pixels (fake-08's grid predates
+# these tweaks): puny-e (69) and puny-l (76) bottom row, ampersand row 2.
+OVERRIDES = {69: {4: 0x06}, 76: {4: 0x06}, 38: {2: 0x06}}
+
 def main(src, out):
     text = open(src, encoding="utf-8").read()
     m = re.search(r'font_ss_str\s*=\s*R"\((.*?)\)"', text, re.S)
@@ -37,6 +42,8 @@ def main(src, out):
                     if row[col * 8 + x] == "7":
                         b |= 1 << x
                 bs.append(b)
+            for row_i, val in OVERRIDES.get(c, {}).items():
+                bs[row_i] = val
             f.write("  {" + ",".join(f"0x{b:02x}" for b in bs) + "},"
                     + (f" /* {chr(c)!r} */\n" if 32 <= c < 127 else f" /* {c} */\n"))
         f.write("};\n")

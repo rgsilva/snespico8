@@ -66,9 +66,25 @@ would notice (VERIFY if one ever does — revisit with more captures).
     srand(0x1234.5678): state lo=0x41a8bda7 hi=0x980fd138
     boot state varies per launch (entropy) — keep ours fixed for determinism.
 
-## TODO
+## realvec.sh (DONE)
 
-- realvec.sh: permanent vector suite runp8-vs-real-PICO-8 (like
-  numvec.sh vs z8lua), including screen-hash carts for the gfx API.
-- Re-verify rnd state layout at 0x5f44 after switching rnd_step to the
-  real formulation.
+`tests/realvec.sh` runs `tests/realvec.lua` under both engines and
+diffs; gfx stages hash their own framebuffer via @ peeks (the hash IS
+the comparison — no screenshots). First run found and fixed: three
+wrong font glyphs (puny-e 69, puny-l 76, ampersand 38 — OVERRIDES in
+tools/mkfont.py), a print() stack-index bug (luaL_tolstring's pushed
+copy read as the color arg -> cursor-mode text drawn in color 0), and
+**decimal literal parsing: real PICO-8 TRUNCATES with a 6-digit cap**
+(0.1 -> 0x1999, 0.33 -> 0x547a, 0.12345678 -> 0x1f9a; z8lua rounds and
+diverges from the real console — real wins, p8num.c fixed; all z8lua
+suites still pass since displays coincide).
+
+## Open: display formatting boundary rule
+
+tostr's 4-decimal display has contradictory boundary evidence:
+raw 0xffff -> "1" (demands rounding: 9999.847 -> 10000 -> carry) but
+raw 6 -> "0" (demands truncation: 0.9155 -> 0). Neither pure rule fits
+both; our formatter rounds half-up (matches z8lua; raw 6 shows
+"0.0001"). Needs a boundary sweep (raws 2..8, 0xfff0..0xffff, halfway
+cases) to pin. Display-only, 1-ulp class; realvec avoids the ambiguous
+case by comparing raw bits.
