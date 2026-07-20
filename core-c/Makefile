@@ -44,7 +44,18 @@ $(BUILD)/runp8: $(BUILD)/runp8.o $(BUILD)/p8.o $(BUILD)/p8gfx.o $(BUILD)/p8audio
 test: $(BUILD)/runp8
 	$(BUILD)/runp8 tests/carts/m1_hello.p8 -n 3 -p $(BUILD)/m1_hello.ppm
 
+# Host regression suites for CI (.github/workflows) and local runs: the
+# language vectors (diffed against the z8lua oracle at ../tools/z8lua/z8lua)
+# plus the gfx/audio goldens. Excludes suites that need gitignored bits --
+# celeste (BBS cart), realvec (real PICO-8), snesparity (Calypsi + Mesen).
+check: $(BUILD)/runp8
+	bash tests/numvec.sh
+	bash tests/dialectvec.sh
+	bash tests/libvec.sh
+	bash tests/gfxvec.sh
+	bash tests/audiovec.sh
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all test clean
+.PHONY: all test check clean

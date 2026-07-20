@@ -73,5 +73,11 @@ docs/     project brief, design notes
 - **Demo ROM** (`make -C snes demo-rom`): the menu curated with our own test
   carts — a graphics test, a live joypad readout, and the music demo (all
   ours, freely shippable; `make -C snes test-demo` verifies it).
-- Next: finish M8 (.p8.png loader + pause menu), a docs pass, then CI that
-  builds the free public release; M9 (perf) after that.
+- **Release + CI**: `make -C snes release` → `snespico8.sfc`, the free public
+  ROM (runtime + our own carts). GitHub CI (`.github/workflows/build.yml`)
+  runs the host suites (`make -C core-c check`) on every push and opens a
+  release on a `v*` tag; the locally-built ROM is attached by hand (Calypsi
+  can't run in a public CI). Host CI is strong coverage — the SNES build is
+  bit-identical to it (M4).
+- Next: finish M8 (`.p8.png` loader + pause menu), then a docs pass (M12);
+  M9 (perf) after that.
