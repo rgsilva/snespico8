@@ -9,6 +9,7 @@
 **
 ** size_t is 16-bit on Calypsi — internal sizes use unsigned long. */
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 #include "p8heap.h"
 
@@ -23,6 +24,13 @@ typedef struct FreeBlk {
 
 static FreeBlk *freelist;
 static unsigned long total_free;
+static unsigned long total_size;   /* sum of all regions ever added */
+
+/* telemetry (cheap; read via p8heap_free_bytes / the extern counters) */
+unsigned long p8heap_peak_used;    /* high-water live bytes */
+unsigned long p8heap_max_ok;       /* largest satisfied request (nsize) */
+unsigned long p8heap_max_fail;     /* largest failed request (nsize) */
+unsigned long p8heap_nfail;        /* count of failed requests */
 
 void p8heap_add_region(void *base, unsigned long size)
 {
@@ -35,11 +43,19 @@ void p8heap_add_region(void *base, unsigned long size)
   b->next = *pp;
   *pp = b;
   total_free += b->size;
+  total_size += b->size;
 }
 
 unsigned long p8heap_free_bytes(void)
 {
   return total_free;
+}
+
+static void note_used(void)
+{
+  unsigned long used = total_size - total_free;
+  if (used > p8heap_peak_used)
+    p8heap_peak_used = used;
 }
 
 static void *heap_alloc(unsigned long n)
@@ -64,7 +80,8 @@ static void *heap_alloc(unsigned long n)
       }
       total_free -= n;
       p = (char *)b;
-      *(unsigned long *)p = n;
+      *(uint32_t *)p = (uint32_t)n; /* 4-byte header (== HDR on both host
+                                       64-bit and the 32-bit-long SNES) */
       return p + HDR;
     }
   }
@@ -76,7 +93,7 @@ static void heap_free(void *ptr)
   char *p = (char *)ptr - HDR;
   FreeBlk *b = (FreeBlk *)p;
   FreeBlk **pp;
-  unsigned long size = *(unsigned long *)p;
+  unsigned long size = *(uint32_t *)p;
   b->size = size;
   total_free += size;
   for (pp = &freelist; *pp && (char *)*pp < p; pp = &(*pp)->next)
@@ -98,6 +115,20 @@ static void heap_free(void *ptr)
   }
 }
 
+static void *track(unsigned long nsize, void *result)
+{
+  if (result) {
+    if (nsize > p8heap_max_ok)
+      p8heap_max_ok = nsize;
+    note_used();
+  } else {
+    if (nsize > p8heap_max_fail)
+      p8heap_max_fail = nsize;
+    p8heap_nfail++;
+  }
+  return result;
+}
+
 void *p8heap_lua_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
 {
   (void)ud;
@@ -108,18 +139,18 @@ void *p8heap_lua_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
     return NULL;
   }
   if (ptr == NULL)
-    return heap_alloc((unsigned long)nsize);
+    return track((unsigned long)nsize, heap_alloc((unsigned long)nsize));
   {
-    unsigned long have = *(unsigned long *)((char *)ptr - HDR) - HDR;
+    unsigned long have = (unsigned long)*(uint32_t *)((char *)ptr - HDR) - HDR;
     if ((unsigned long)nsize <= have)
       return ptr; /* shrink in place (no split; Lua shrinks are rare) */
     {
       void *np = heap_alloc((unsigned long)nsize);
       if (!np)
-        return NULL;
+        return track((unsigned long)nsize, NULL);
       memcpy(np, ptr, have);
       heap_free(ptr);
-      return np;
+      return track((unsigned long)nsize, np);
     }
   }
 }

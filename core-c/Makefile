@@ -30,7 +30,12 @@ $(BUILD)/p8.o: src/p8.c src/p8.h | $(BUILD)
 $(BUILD)/runp8.o: src/runp8.c src/p8.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/runp8: $(BUILD)/runp8.o $(BUILD)/p8.o $(BUILD)/p8gfx.o $(BUILD)/p8num.o $(LUA_OBJS)
+# p8heap.c is the SNES region allocator; compiled into runp8 only for the
+# -M heap-measurement mode (M5). It stays portable C (no SNES-isms).
+$(BUILD)/p8heap.o: ../snes/p8heap.c ../snes/p8heap.h | $(BUILD)
+	$(CC) $(CFLAGS) -I../snes -c -o $@ $<
+
+$(BUILD)/runp8: $(BUILD)/runp8.o $(BUILD)/p8.o $(BUILD)/p8gfx.o $(BUILD)/p8num.o $(BUILD)/p8heap.o $(LUA_OBJS)
 	$(CC) -o $@ $^ -lm
 
 test: $(BUILD)/runp8
