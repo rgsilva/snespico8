@@ -18,6 +18,8 @@
 ;   op 9 = LOAD B   F4 = byte -> [ptr]++, for streaming the audio data
 ;
 ; DSP: SRCN = PICO-8 waveform 0-7 (triangle..phaser); noise via NON.
+; Effects (note bits 12-14): fades (4/5) via the DSP envelope in note_on;
+; slide/vibrato/drop/arp (1/2/3/6/7) via seq_fx, reprogramming pitch per tick.
 ; dp $00 keyed mask, $01 last F7, $03 voice, $04 pitch, $05 wave, $06 vol,
 ;    $07 NON shadow, $08/$09 scratch, $0A KOF shadow,
 ;    $30+voice*2 = last DSP P programmed (test readback),
@@ -92,7 +94,7 @@ _si_z:
     mov a, #0
     mov $40+x, a
     inc x
-    cmp x, #$30
+    cmp x, #$40                  ; clear $40..$7F (incl. per-channel fx state)
     bne _si_z
     mov a, #$FF
     mov $40, a                   ; ch_sfx[0..3] = idle
@@ -261,8 +263,17 @@ note_on:
     mov $F2, a
     mov a, $05
     mov $F3, a
-    ; ADSR off -> GAIN direct max
-    mov a, $09
+    ; envelope from the effect: fade-out (5) = ADSR fast-attack decay to
+    ; silence; fade-in (4) = GAIN linear rise; else GAIN direct max. The
+    ; hardware envelope does the volume ramp so seq_fx need only touch pitch.
+    mov a, $03
+    mov x, a
+    mov a, $70+x                 ; ch_eff
+    cmp a, #5
+    beq _env_fo
+    cmp a, #4
+    beq _env_fi
+    mov a, $09                   ; default: ADSR off, GAIN direct max
     or a, #$05
     mov $F2, a
     mov a, #$00
@@ -272,6 +283,31 @@ note_on:
     mov $F2, a
     mov a, #$7F
     mov $F3, a
+    bra _env_done
+_env_fo:                          ; fade out: instant attack, decay to 0
+    mov a, $09
+    or a, #$05
+    mov $F2, a
+    mov a, #$EF                  ; ADSR1: enable + decay 6 + attack 15
+    mov $F3, a
+    mov a, $09
+    or a, #$06
+    mov $F2, a
+    mov a, #$00                  ; ADSR2: sustain level 0 -> fades to silence
+    mov $F3, a
+    bra _env_done
+_env_fi:                          ; fade in: GAIN linear increase from 0
+    mov a, $09
+    or a, #$05
+    mov $F2, a
+    mov a, #$00                  ; ADSR1 = 0 -> GAIN mode
+    mov $F3, a
+    mov a, $09
+    or a, #$07
+    mov $F2, a
+    mov a, #$D2                  ; GAIN: linear increase (bits6-5=10), rate 18
+    mov $F3, a
+_env_done:
     ; NON: waveform 6 = noise
     mov a, $05
     cmp a, #$06
@@ -418,14 +454,226 @@ seq_key:
     lsr a
     and a, #$07
     mov $06, a
-    ; NOTE: the effect field (word bits 12-14: slide/vibrato/drop/fade/arp)
-    ; is not yet applied -- notes play at their base pitch/volume. Per-tick
-    ; effect modulation is the remaining M6c piece (see docs/PROJECT.md).
     beq _sk_off                  ; volume 0 -> silence
+    ; ---- capture per-channel effect state for seq_fx (X = channel) ----
+    mov a, $74+x                 ; ch_ppitch[x] = old ch_pitch[x] (for slide)
+    mov $78+x, a
+    mov a, $04                   ; ch_pitch[x] = new pitch
+    mov $74+x, a
+    mov a, $06                   ; ch_vol[x]   = base volume
+    mov $7C+x, a
+    mov a, $09                   ; ch_eff[x]   = (note_hi >> 4) & 7
+    xcn a
+    and a, #$07
+    mov $70+x, a
     call !note_on
     ret
 _sk_off:
     call !kof_v
+    ret
+
+; ---- _mul_pos: ($0C lo,$0F hi) * pos($3F) >> 8 -> ($0C lo,$0F hi) --------
+_mul_pos:
+    mov y, $0C
+    mov a, $3F
+    mul ya                       ; (mag_lo*pos)>>8 in Y
+    mov a, y
+    mov $0C, a
+    mov y, $0F
+    mov a, $3F
+    mul ya                       ; mag_hi*pos (y hi, a lo)
+    clrc
+    adc a, $0C
+    mov $0C, a
+    mov a, y
+    adc a, #0
+    mov $0F, a
+    ret
+
+; ---- seq_fx: per-tick pitch modulation for the current effect ----------
+; X = channel. Effects 1 slide, 2 vibrato, 3 drop, 6/7 arp reprogram the
+; voice pitch each tick. 0/4/5 return (fades are done by the DSP envelope).
+; Base pitch P is at $30+channel*2 (stashed by note_on); tick/speed give the
+; position through the note. VERIFY: depths/rates ear-tuned vs real PICO-8.
+seq_fx:
+    mov a, $70+x                 ; eff
+    beq _fx_none
+    cmp a, #4
+    beq _fx_none                 ; fade in  -> envelope
+    cmp a, #5
+    beq _fx_none                 ; fade out -> envelope
+    mov $3C, a                   ; eff
+    mov a, x
+    mov $3D, a                   ; channel
+    xcn a
+    mov $3E, a                   ; voice register base
+    mov a, $3D                   ; base P (from $30 + channel*2) -> $08/$0B
+    asl a
+    mov x, a
+    mov a, $30+x
+    mov $08, a
+    inc x
+    mov a, $30+x
+    mov $0B, a
+    mov a, $3D                   ; pos = (tick*256)/speed  (0..255)
+    mov x, a
+    mov y, $4C+x                 ; tick
+    mov a, $50+x                 ; speed
+    mov x, a
+    mov a, #0
+    div ya, x
+    mov $3F, a                   ; pos
+    mov a, $3C
+    cmp a, #2
+    beq _fx_vib
+    cmp a, #3
+    beq _fx_drop
+    cmp a, #1
+    beq _fx_slide
+    jmp !_fx_arp                  ; 6/7
+_fx_none:
+    ret
+
+_fx_vib:                          ; P = base_P +/- depth, wobbling per tick
+    mov a, $0B
+    asl a                        ; depth ~ base_P_hi*2
+    mov $0C, a
+    mov a, $3D
+    mov x, a
+    mov a, $4C+x
+    and a, #$02
+    beq _vib_m
+    mov a, $08
+    clrc
+    adc a, $0C
+    mov $08, a
+    mov a, $0B
+    adc a, #0
+    mov $0B, a
+    jmp !_fx_writeP
+_vib_m:
+    mov a, $08
+    setc
+    sbc a, $0C
+    mov $08, a
+    mov a, $0B
+    sbc a, #0
+    mov $0B, a
+    jmp !_fx_writeP
+
+_fx_drop:                         ; P = base_P * (255-pos) >> 8  (falls to 0)
+    mov a, #255
+    setc
+    sbc a, $3F
+    mov $3F, a
+    mov a, $08
+    mov $0C, a
+    mov a, $0B
+    mov $0F, a
+    call !_mul_pos
+    mov a, $0C
+    mov $08, a
+    mov a, $0F
+    mov $0B, a
+    jmp !_fx_writeP
+
+_fx_slide:                        ; P = prev_P + (base_P - prev_P)*pos>>8
+    mov a, $3D
+    mov x, a
+    mov a, $78+x                 ; prev pitch -> prev_P in $0D/$0E
+    asl a
+    mov x, a
+    mov a, !pitch_tab+x
+    mov $0D, a
+    mov a, !pitch_tab+1+x
+    mov $0E, a
+    mov a, $0B                   ; base_P >= prev_P ?
+    cmp a, $0E
+    bcc _sl_dn
+    bne _sl_up
+    mov a, $08
+    cmp a, $0D
+    bcc _sl_dn
+_sl_up:
+    mov a, $08                   ; mag = base_P - prev_P
+    setc
+    sbc a, $0D
+    mov $0C, a
+    mov a, $0B
+    sbc a, $0E
+    mov $0F, a
+    call !_mul_pos
+    mov a, $0D                   ; P = prev_P + mag*pos>>8
+    clrc
+    adc a, $0C
+    mov $08, a
+    mov a, $0E
+    adc a, $0F
+    mov $0B, a
+    jmp !_fx_writeP
+_sl_dn:
+    mov a, $0D                   ; mag = prev_P - base_P
+    setc
+    sbc a, $08
+    mov $0C, a
+    mov a, $0E
+    sbc a, $0B
+    mov $0F, a
+    call !_mul_pos
+    mov a, $0D                   ; P = prev_P - mag*pos>>8
+    setc
+    sbc a, $0C
+    mov $08, a
+    mov a, $0E
+    sbc a, $0F
+    mov $0B, a
+    jmp !_fx_writeP
+
+_fx_arp:                          ; cycle the 4-note group; 6 fast, 7 slow
+    mov a, $3D
+    mov x, a
+    mov a, $4C+x                 ; tick
+    mov y, $3C
+    cmp y, #7
+    bne _arp_f
+    lsr a                        ; slow: advance every 2 ticks
+_arp_f:
+    and a, #$03                  ; group index 0..3
+    mov $0C, a
+    mov a, $44+x                 ; group row = (row & ~3) + index
+    and a, #$FC
+    clrc
+    adc a, $0C
+    mov $0C, a
+    call !sfx_base_x             ; X still = channel
+    mov a, $0C
+    asl a
+    mov y, a
+    mov a, [$67]+y               ; note lo -> pitch
+    and a, #$3F
+    asl a
+    mov x, a
+    mov a, !pitch_tab+x
+    mov $08, a
+    mov a, !pitch_tab+1+x
+    mov $0B, a
+    ; fall through to write
+
+_fx_writeP:                       ; write $08/$0B to the voice pitch regs
+    mov a, $3E
+    or a, #$02
+    mov $F2, a
+    mov a, $08
+    mov $F3, a
+    mov a, $3E
+    or a, #$03
+    mov $F2, a
+    mov a, $0B
+    mov $F3, a
+    mov a, $08                    ; stash the modulated P ($2E/$2F) so the
+    mov $2E, a                    ; test can watch per-tick pitch modulation
+    mov a, $0B
+    mov $2F, a
     ret
 
 ; ---- chan_start_x: set channel X to play sfx A ($69 = music flag) ----
@@ -642,7 +890,7 @@ _st_loop:
     inc $4C+x                    ; tick++
     mov a, $4C+x
     cmp a, $50+x                 ; tick < speed?
-    bcc _st_next
+    bcc _st_fx                   ; same note -> just modulate the effect
     mov a, #0
     mov $4C+x, a                 ; tick = 0
     inc $44+x                    ; row++
@@ -670,6 +918,10 @@ _st_endchk:
 _st_key:
     push x
     call !seq_key
+    pop x
+_st_fx:
+    push x
+    call !seq_fx                 ; apply the per-tick effect (pitch)
     pop x
 _st_next:
     inc x

@@ -374,9 +374,15 @@ tail (phased), byte-exact `^` vs real PICO-8 (matches our oracle instead).
         chaining, loop-start/-end/stop). RESULT PASS: streamed data matches,
         the timer heartbeat advances on its own, the player chains patterns
         0->1->loop, and notes key across channels — 65816 idle throughout.
-        Effects (word bits 12-14: slide/vibrato/drop/fade/arp) are decoded in
-        the format but not yet applied per-tick — notes play at base
-        pitch/volume; per-tick modulation is the remaining audio polish.
+  - [x] M6-fx: **per-tick effects engine** (`make -C snes test-fx`). All 8
+        PICO-8 note effects (word bits 12-14): fades (4/5) via the DSP
+        envelope (fade-out = ADSR fast-attack decay-to-zero, fade-in = GAIN
+        linear rise, set in note_on); slide (1)/vibrato (2)/drop (3)/arp
+        (6/7) via a new seq_fx that reprograms the voice pitch every tick
+        (pos = tick/speed; 16x8 mul/div for the ramps; arp reads the 4-note
+        group). Verified: drop sweeps voice-0 pitch 173..4269 per note,
+        fade-out sweeps its envelope 0..99 — both read back from SPC state.
+        Depths/rates ear-tuned vs real PICO-8; the demo melody plucks now.
   - [x] M6d: **real carts drive the audio** (`make -C snes test-audio`). The
         core's sfx()/music() route to the SPC (`snes/p8main.c`
         snes_audio_cmd); boot + stream + register happen in the normal path.
