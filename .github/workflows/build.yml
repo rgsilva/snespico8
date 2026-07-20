@@ -1,13 +1,17 @@
 name: build
 
-# Host-side CI. It builds the portable core and runs the regression suites
-# that need only gcc + the open-source z8lua oracle. It intentionally does
-# NOT build the SNES ROM: that needs the Calypsi toolchain, which is licensed
-# for personal use only and may not be redistributed into a public runner.
-# Because M4 proved the Calypsi-compiled SNES build is bit-identical to this
-# host core, a green host suite is strong regression coverage. The flashable
-# release ROM is built locally with `make -C snes release` and attached to
-# the release by hand (see docs/PROJECT.md, M14).
+# Two jobs:
+#   host-tests  -- builds the portable core + runs the regression suites
+#                  (gcc + the open-source z8lua oracle). Fast correctness gate.
+#   rom-build   -- installs the Calypsi toolchain from its official release and
+#                  builds WLA-DX from source, then builds the flashable SNES
+#                  ROM. Catches SNES-build breaks and produces the artifact;
+#                  on a v* tag it publishes a release with the ROM attached.
+#
+# Calypsi is proprietary but free for personal, non-commercial (hobby) use.
+# We do NOT redistribute it -- the runner installs it from the author's own
+# GitHub release, exactly as a developer would. It cannot run Mesen, so the
+# on-hardware (Mesen) tests still run locally.
 
 on:
   push:
@@ -17,20 +21,20 @@ on:
     branches: [ main ]
 
 permissions:
-  contents: write        # create a release on a v* tag
+  contents: write        # publish a release on a v* tag
 
 jobs:
   host-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5   # v5+ runs on Node 24 (v4 = deprecated Node 20)
+      - uses: actions/checkout@v5
 
       - name: Install build tools
         # libreadline-dev: z8lua's Makefile links -lreadline -lhistory
         run: sudo apt-get update && sudo apt-get install -y build-essential libreadline-dev
 
-      # z8lua is the correctness oracle for the numeric/dialect/lib vectors.
-      # Pinned to the commit the committed goldens were produced against.
+      # z8lua is the correctness oracle for the numeric/dialect vectors,
+      # pinned to the commit the committed goldens were produced against.
       - name: Build the z8lua oracle
         run: |
           git clone https://github.com/samhocevar/z8lua.git tools/z8lua
@@ -38,28 +42,58 @@ jobs:
           make -C tools/z8lua
           test -x tools/z8lua/z8lua
 
-      # Builds runp8 and runs the host-compiler-portable suites: numvec /
-      # dialectvec (vs z8lua) + gfxvec / audiovec (goldens). libvec is left
-      # to local runs (it probes sin/cos extremes, a z8lua fixed-point quirk
-      # that gcc rounds differently -- see core-c/Makefile). Any regression
-      # fails here.
+      # numvec / dialectvec (vs z8lua) + gfxvec / audiovec (goldens). libvec
+      # is left to local runs (host-compiler-sensitive; see core-c/Makefile).
       - name: Host regression suites
         run: make -C core-c check-ci
 
-      # On a v* tag (and only if the suites above passed): open a GitHub
-      # release with auto notes. Attach the locally-built ROM by hand, or:
-      #   make -C snes release && gh release upload "$TAG" snes/build/snespico8.sfc
-      - name: Create release on a version tag
+  rom-build:
+    needs: host-tests
+    runs-on: ubuntu-latest
+    env:
+      CAL: /usr/local/lib/calypsi-65816-5.17
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake
+
+      # Fetch Calypsi from the author's official release (personal/hobby use
+      # per its license; not redistributed by us). dpkg-deb -x unpacks the
+      # binaries to /usr/local/lib/calypsi-65816-5.17/{bin,lib}.
+      - name: Install the Calypsi 65816 toolchain
+        run: |
+          curl -fsSL -o /tmp/calypsi.deb \
+            https://github.com/hth313/Calypsi-tool-chains/releases/download/5.17/calypsi-65816-5.17.deb
+          sudo dpkg-deb -x /tmp/calypsi.deb /
+          "$CAL/bin/cc65816" --version
+
+      # WLA-DX (open source) supplies the SPC700 assembler + linker.
+      - name: Build WLA-DX
+        run: |
+          git clone --depth 1 --branch v10.7 https://github.com/vhelin/wla-dx.git /tmp/wla
+          cmake -S /tmp/wla -B /tmp/wla/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/wla/build -j"$(nproc)"
+          echo "WLABIN=$(dirname "$(find /tmp/wla/build -name wla-65816 -type f | head -1)")" >> "$GITHUB_ENV"
+
+      - name: Build the release ROM
+        run: make -C snes release P8CALDIR="$CAL" CALDIR="$CAL" PVBIN="$WLABIN"
+
+      - name: Upload the ROM artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: snespico8-rom
+          path: snes/build/snespico8.sfc
+
+      # On a v* tag: publish a release with the ROM and auto-generated notes.
+      - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          files: snes/build/snespico8.sfc
           body: |
-            snespico8 release.
-
-            This CI verified the portable runtime and its host regression
-            suites. The flashable SNES ROM is built locally with
-            `make -C snes release` (the Calypsi toolchain cannot be
-            redistributed into CI) and attached here by hand -- see
-            docs/PROJECT.md (M14). The ROM ships only our own carts (no
-            Lexaloffle/BBS assets), so it is freely redistributable.
+            snespico8 -- a PICO-8 runtime for a stock SNES. Built end to end by
+            CI (host regression suites + the SNES ROM). The ROM ships only our
+            own carts (no Lexaloffle/BBS assets), so it is freely
+            redistributable. Flash snespico8.sfc, or run it in an emulator.
