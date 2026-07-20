@@ -436,8 +436,11 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
 - [ ] M9: perf passes — asm hot paths, measured fps corpus
 - [ ] M10: real hardware, stock SNES, flash cart
 - [ ] M11: SA-1 tier — 4x clock + 256 KB linear heap
-- [ ] M12: **complete documentation pass** — bring docs/README/format notes
-      fully current, a build/run guide, a per-milestone status map.
+- [x] M12: **documentation pass** — `docs/BUILDING.md` (prerequisites + every
+      make target, host suites, the release flow), `docs/cart-formats.md` (the
+      `.p8` / `.p8.png` stego + pxa reference hand-derived in M8b), and a
+      refreshed `README.md` (a per-milestone status map + doc links). Current
+      through M14.
 - [x] M13: **demo ROM** (`make -C snes demo-rom`, verify with `test-demo`) —
       a curated multi-cart build on the M8a menu with our own carts (all ours,
       freely shippable): `demo_video` (16-colour palette bars + an animated
