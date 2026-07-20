@@ -159,6 +159,17 @@ test-spcseq:
 	$(MESEN) --testrunner $(BUILD)/p8.sfc test/spcseq.lua
 	rm -f $(BUILD)/p8obj/p8main.o
 
+# M6d: end-to-end. A NORMAL ROM (no test define) runs a cart whose _init
+# calls music(0); the core routes it to the SPC, which plays the song in
+# real time while the game loop runs. test/audio.lua checks the SPC is
+# actually playing + chaining patterns -- driven only by the cart's Lua.
+.PHONY: test-audio
+test-audio:
+	rm -f $(BUILD)/p8obj/p8main.o
+	$(MAKE) p8 CART=../core-c/tests/carts/m6_audio.p8 FRAMES=16
+	$(MESEN) --testrunner $(BUILD)/p8.sfc test/audio.lua
+	rm -f $(BUILD)/p8obj/p8main.o
+
 # M5c: boot Celeste Classic on the SNES. The cart is CC-BY-NC-SA and not
 # committed; fetch it first (same as core-c/tests/celeste.sh):
 #   curl -sL -o ../core-c/tests/carts-external/celeste.p8 \

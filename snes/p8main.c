@@ -203,6 +203,28 @@ static void run_global(lua_State *L, const char *name)
   }
 }
 
+/* M6d: route the core's sfx()/music() to the SPC sequencer. Args are the
+** raw PICO-8 call arguments (p8.h P8_ACMD_*). The SPC then sequences in
+** real time. Auto-channel (channel < 0) maps to channel 3 -- carts
+** usually reserve 0-2 for music; VERIFY per-cart. */
+static void snes_audio_cmd(int kind, int a, int b, int c, int d)
+{
+  (void)c; (void)d;
+  if (kind == P8_ACMD_SFX) {
+    if (a >= 0)
+      p8spc_play_sfx((uint8_t)(a & 63), (uint8_t)(b >= 0 && b < 4 ? b : 3));
+    else if (b >= 0 && b < 4)
+      p8spc_kof((uint8_t)b);       /* sfx(-1, channel): stop that channel */
+    else
+      p8spc_alloff();              /* sfx(-1): stop everything */
+  } else {                          /* P8_ACMD_MUSIC */
+    if (a >= 0)
+      p8spc_play_music((uint8_t)(a & 63));
+    else
+      p8spc_stop_music();           /* music(-1): stop the song */
+  }
+}
+
 int main(void)
 {
   lua_State *L;
@@ -286,6 +308,13 @@ int main(void)
   lua_pop(L, 1);
   p8_open(L);
   p8_set_flip(snes_flip, NULL);
+  /* M6d: bring up the SPC audio driver, stream the cart's sfx/music into
+   * it, and route sfx()/music() there. The SPC then plays in real time
+   * while the game loop crawls. Registered before _init so a cart that
+   * starts music in _init is heard. */
+  p8spc_boot();
+  p8spc_load_audio();
+  p8_set_audio_cmd(snes_audio_cmd);
   mb_puts("state ok\n");
 
   if (luaL_loadbuffer(L, cart_lua, cart_lua_len, "cart") != LUA_OK) {
