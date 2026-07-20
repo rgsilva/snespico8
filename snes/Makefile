@@ -170,6 +170,15 @@ test-audio:
 	$(MESEN) --testrunner $(BUILD)/p8.sfc test/audio.lua
 	rm -f $(BUILD)/p8obj/p8main.o
 
+# M6 effects: sfx0 is a DROP note; test/fx.lua checks the SPC actually
+# modulates the voice pitch per tick (a wide pitch sweep).
+.PHONY: test-fx
+test-fx:
+	rm -f $(BUILD)/p8obj/p8main.o
+	$(MAKE) p8 CART=../core-c/tests/carts/m6_fx.p8 FRAMES=8
+	$(MESEN) --testrunner $(BUILD)/p8.sfc test/fx.lua
+	rm -f $(BUILD)/p8obj/p8main.o
+
 # A loadable audio-demo ROM: a real melody + bass that loops (the SPC plays
 # it in real time) with a slowly-updating screen. Build then open
 # build/p8.sfc in Mesen with sound ON -- this is meant to be heard, not run
