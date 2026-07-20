@@ -78,10 +78,22 @@ static void spc_load(uint16_t dest, const uint8_t *src, uint16_t len)
     spc_cmd(src[i], 0, 0, 9);
 }
 
+/* trailing-zero-trimmed length: unused SFX/patterns are zero and need not
+** be streamed. Cuts a no-audio cart's boot to nothing and a light one to a
+** few hundred bytes instead of the full 4.6 KB. */
+static uint16_t used_len(const uint8_t *p, uint16_t max)
+{
+  while (max > 0 && p[max - 1] == 0)
+    max--;
+  return max;
+}
+
 void p8spc_load_audio(void)
 {
-  spc_load(0x1000, &p8_ram[P8_SFX], 64u * 68u);   /* SFX  -> SPC $1000 */
-  spc_load(0x2200, &p8_ram[P8_SONG], 64u * 4u);   /* song -> SPC $2200 */
+  uint16_t sl = used_len(&p8_ram[P8_SFX], 64u * 68u);
+  uint16_t ml = used_len(&p8_ram[P8_SONG], 64u * 4u);
+  if (sl) spc_load(0x1000, &p8_ram[P8_SFX], sl);    /* SFX  -> SPC $1000 */
+  if (ml) spc_load(0x2200, &p8_ram[P8_SONG], ml);   /* song -> SPC $2200 */
 }
 
 void p8spc_play_sfx(uint8_t sfx, uint8_t channel)

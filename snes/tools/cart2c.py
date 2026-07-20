@@ -111,8 +111,10 @@ def main(src, out, frames=8, inputfile=None):
             f.write("};\n")
             f.write("static const unsigned int cart_%s_len = %d; /* -> %s */\n"
                     % (name, len(arr), base))
-        # frame count and per-frame player-0 button masks (M4 parity)
-        f.write("static const int cart_frames = %d;\n" % frames)
+        # frame count and per-frame player-0 button masks (M4 parity).
+        # long, not int: int is 16-bit on Calypsi, so a demo FRAMES>32767
+        # would overflow negative and the game loop would run zero times.
+        f.write("static const long cart_frames = %d;\n" % frames)
         f.write("static const unsigned int cart_input[%d] = {\n  "
                 % max(len(inputs), 1))
         f.write(",".join(str(m) for m in inputs) if inputs else "0")

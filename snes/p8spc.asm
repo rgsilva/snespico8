@@ -675,6 +675,21 @@ _st_next:
     inc x
     cmp x, #4
     bne _st_loop
+    ; ENVX readback: the live DSP envelope of each voice ($38+v). Nonzero
+    ; while keyed = the voice is actually producing output (real audio, not
+    ; just registers set). The test harness reads these.
+    mov $F2, #$08                ; voice 0 ENVX
+    mov a, $F3
+    mov $38, a
+    mov $F2, #$18                ; voice 1
+    mov a, $F3
+    mov $39, a
+    mov $F2, #$28                ; voice 2
+    mov a, $F3
+    mov $3A, a
+    mov $F2, #$38                ; voice 3
+    mov a, $F3
+    mov $3B, a
     ret
 
 .INCLUDE "build/p8spc_tables.asm"
