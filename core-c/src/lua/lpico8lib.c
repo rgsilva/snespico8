@@ -62,7 +62,13 @@ static long sin_helper(long x) {
     unsigned long ub = (unsigned long)(unsigned LUA_INT32)x;
     unsigned long folded = (ub & 0x4000u) ? ~ub : ub;
     unsigned long a = (folded & 0x3fffu) + 2u;
-    long ret = (long)(LUA_INT32)(((a >> 2) << 4) + (unsigned long)sintable[a >> 2]);
+    /* a>>2 reaches 4096 (a=0x4000/0x4001) but sintable has 4096 entries
+       [0..4095] — z8lua reads [4096] out of bounds and the host build
+       happens to read 0 there; the SNES build reads adjacent data. The
+       mathematically correct value at 4096 is 0 (sin(0.25)-1 == 0). */
+    unsigned idx = (unsigned)(a >> 2);
+    unsigned long tv = (idx < 4096u) ? (unsigned long)sintable[idx] : 0u;
+    long ret = (long)(LUA_INT32)(((a >> 2) << 4) + tv);
     return (ub & 0x8000u) ? ret : p8fix_unm(ret);
 }
 
@@ -238,7 +244,14 @@ static int pico8_tonum(lua_State *l) {
             break;
         }
         case LUA_TNUMBER: ret = lua_tonumber(l, 1); break;
-        case LUA_TBOOLEAN: ret = (lua_Number)p8fix_fromint(lua_toboolean(l, 1) ? 1 : 0); break;
+        case LUA_TBOOLEAN: {
+            /* Calypsi -O0 clobbers a ?: ternary passed directly as a call
+               argument (bugs/calypsi-ternary-arg-clobber.c) — the result
+               in A is overwritten before use. Force it into a named local. */
+            long bv = lua_toboolean(l, 1) ? 1 : 0;
+            ret = (lua_Number)p8fix_fromint(bv);
+            break;
+        }
         default: return 0;
     }
     lua_pushnumber(l, ret);

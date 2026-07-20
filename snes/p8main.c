@@ -230,6 +230,18 @@ int main(void)
   luaL_requiref(L, "pico8", luaopen_pico8, 1);
   lua_pop(L, 1);
   lua_setpico8memory(L, p8_ram);
+  /* PICO-8 exposes coroutines under global names (match runp8 exactly so
+     the only host<->SNES difference is the compiler) */
+  lua_getglobal(L, "coroutine");
+  lua_getfield(L, -1, "create");
+  lua_setglobal(L, "cocreate");
+  lua_getfield(L, -1, "resume");
+  lua_setglobal(L, "coresume");
+  lua_getfield(L, -1, "status");
+  lua_setglobal(L, "costatus");
+  lua_getfield(L, -1, "yield");
+  lua_setglobal(L, "yield");
+  lua_pop(L, 1);
   p8_open(L);
   p8_set_flip(snes_flip, NULL);
   mb_puts("state ok\n");
