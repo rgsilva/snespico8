@@ -412,9 +412,27 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
       carts need it).
 - [ ] M8: carting/UX — .p8.png+pxa decoder, multi-cart menu ROM,
       pause/menuitem, btnp repeat
+  - [x] M8a: **multi-cart menu ROM.** `tools/multicart2c.py` bundles N .p8
+        carts into one ROM (a `cart_multi.h` descriptor table); `p8main.c`
+        built `-DP8_MULTICART` boots a d-pad picker instead of a single cart.
+        Each pick runs in a fresh `lua_State`; Select tears it down
+        (`lua_close` frees the whole Lua heap back, coalesced) and returns to
+        the list. Menu text draws via a new C-side `p8_text()` straight into
+        the framebuffer. Verified end to end (`make -C snes test-menu`): draw
+        list -> launch m7_input -> live input reaches its `btn()` -> Select
+        returns; single-cart path stays pixel-exact (no regression).
+        (.p8.png loader, pause/menuitem, btnp repeat still to come.)
 - [ ] M9: perf passes — asm hot paths, measured fps corpus
 - [ ] M10: real hardware, stock SNES, flash cart
 - [ ] M11: SA-1 tier — 4x clock + 256 KB linear heap
+- [ ] M12: **complete documentation pass** — bring docs/README/format notes
+      fully current, a build/run guide, a per-milestone status map.
+- [ ] M13: **demo ROM** — a curated multi-cart build on the M8a menu: our own
+      homemade test carts (video / audio / joypad) plus any genuinely
+      free-licensed carts. NOT Celeste: it is CC-BY-NC-SA (BBS default) and
+      cannot ship in a public ROM; it stays a local test cart only.
+- [ ] M14: **CI release** — a pipeline that builds the free public release
+      ROM automatically (mirrors snes86's `make release`).
 
 ## Style / working preferences
 

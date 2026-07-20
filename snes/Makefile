@@ -74,6 +74,8 @@ CART ?= ../core-c/tests/carts/m3_boot.p8
 FRAMES ?= 8
 # PLAYCART = the cart the interactive `play` target builds (see below).
 PLAYCART ?= ../core-c/tests/carts/m7_input.p8
+# MENUCARTS = the carts the multi-cart menu/test-menu targets bundle.
+MENUCARTS ?= ../core-c/tests/carts/m7_input.p8 ../core-c/tests/carts/m6_demo.p8 ../core-c/tests/carts/m6_fx.p8 ../core-c/tests/carts/m3_boot.p8
 .PHONY: FORCE
 $(BUILD)/cart_hello.h: $(CART) tools/cart2c.py FORCE | $(BUILD)
 	python3 tools/cart2c.py $(CART) $@ $(FRAMES) $(INPUT)
@@ -210,6 +212,25 @@ demo:
 play:
 	$(MAKE) p8 CART="$(PLAYCART)" FRAMES=1000000000
 	@echo "==> Interactive ROM at $(BUILD)/p8.sfc -- open in Mesen and drive it with a pad."
+
+# M8: bundle several carts into build/cart_multi.h and build the menu ROM
+# (-DP8_MULTICART). p8main.c then boots a d-pad picker instead of one cart;
+# each pick runs in a fresh lua_State, Select returns to the list.
+$(BUILD)/cart_multi.h: tools/multicart2c.py tools/cart2c.py FORCE | $(BUILD)
+	python3 tools/multicart2c.py $@ $(MENUCARTS)
+
+.PHONY: menu test-menu
+menu: $(BUILD)/cart_multi.h
+	rm -f $(BUILD)/p8obj/p8main.o
+	$(MAKE) p8 P8MAINDEF=-DP8_MULTICART
+	rm -f $(BUILD)/p8obj/p8main.o
+	@echo "==> Menu ROM at $(BUILD)/p8.sfc -- open in Mesen, pick a cart with the pad (O launches, Select returns)."
+
+test-menu: $(BUILD)/cart_multi.h
+	rm -f $(BUILD)/p8obj/p8main.o
+	$(MAKE) p8 P8MAINDEF=-DP8_MULTICART
+	$(MESEN) --testrunner $(BUILD)/p8.sfc test/menu.lua
+	rm -f $(BUILD)/p8obj/p8main.o
 
 # M5c: boot Celeste Classic on the SNES. The cart is CC-BY-NC-SA and not
 # committed; fetch it first (same as core-c/tests/celeste.sh):

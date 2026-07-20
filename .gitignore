@@ -13,3 +13,6 @@ build/
 /carts/*.p8
 .DS_Store
 /core-c/tests/carts-external/
+
+# python bytecode cache
+__pycache__/
