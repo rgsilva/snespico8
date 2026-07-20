@@ -281,8 +281,29 @@ tail (phased), byte-exact `^` vs real PICO-8 (matches our oracle instead).
         is unsigned), so peek/poke to high memory is fine. Also hit the
         16-bit size_t truncation (memset of 0x10000 → 0). Both fixed by
         chunked pointer-walk clears; -O0 kept as the baseline.
-- [ ] M4: parity harness — scripted inputs, per-flip FB+RAM hashes both
-      sides, suite.sh convention, vector suite green on SNES
+- [x] M4: **SNES build proven bit-identical to the host core.**
+      `core-c/tests/snesparity.sh` runs the same carts on both the
+      Calypsi-compiled SNES ROM (Mesen + snes/test/parity.lua draining
+      the mailbox) and the host reference (runp8), and diffs. Same shared
+      source, so a divergence is a compiler bug — and two were caught:
+      - **Track 1 (printh):** num 48 + dialect 27 + lib 74 = 149 output
+        lines byte-identical SNES==host. Proves fix32 arithmetic, the P8
+        dialect, and the whole pico8 library run correctly on the 65816.
+      - **Track 2 (framebuffer + machine-RAM hashes):** a shared
+        `p8_hash_region` (FNV-1a, runtime-indexed so Calypsi-safe) over
+        low RAM [0,0x6000) and screen [0x6000,0x8000) per flip, emitted
+        by runp8 `-H` and by snes_flip (gated on `-DP8_PARITY`). 6 gfx
+        carts + a d-pad-driven input cart (embedded input via cart2c):
+        every compared flip bit-identical. SNES runs are bounded by
+        Mesen's ~100 s script limit (per-flip 32 KB hashing is slow at
+        -O0), so the suite compares the common prefix (≥3 flips, here 4)
+        — enough since a codegen divergence shows on frame 1.
+      - Calypsi bugs found (both invisible to host-only testing, fixed in
+        shared source, host stays green): **ternary-arg clobber**
+        (bugs/calypsi-ternary-arg-clobber.c — a `?:` passed directly as a
+        call arg is clobbered by a spill reload at -O0; broke
+        tonum(true)); and a latent **sintable OOB** read at index 4096
+        (z8lua's own bug, tolerated on the host, exposed on SNES).
 - [ ] M5: heap tier — SRAM allocator (32 KB windows), GC tuning, stat(0),
       OOM story; Celeste playable-in-slow-motion (milestone photo)
 - [ ] M6: audio — SPC driver + sequencer, real-time; event-trace parity

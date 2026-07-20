@@ -67,9 +67,13 @@ CART ?= ../core-c/tests/carts/m3_boot.p8
 # cart_hello.h always regenerates (FORCE), but cart2c.py is write-if-changed,
 # so its mtime only bumps when CART actually changes — switching carts
 # rebuilds p8main.o without relying on (1-second-granular) mtimes.
+# FRAMES = frames the main loop runs (M4 parity keeps it small so the
+# extra per-flip hashing fits Mesen's script time limit). INPUT = optional
+# sidecar file of per-frame hex button masks.
+FRAMES ?= 8
 .PHONY: FORCE
 $(BUILD)/cart_hello.h: $(CART) tools/cart2c.py FORCE | $(BUILD)
-	python3 tools/cart2c.py $(CART) $@
+	python3 tools/cart2c.py $(CART) $@ $(FRAMES) $(INPUT)
 
 $(BUILD)/p8obj:
 	mkdir -p $(BUILD)/p8obj
@@ -80,8 +84,11 @@ $(BUILD)/p8obj/lua_%.o: $(CORE)/lua/%.c | $(BUILD)/p8obj
 $(BUILD)/p8obj/%.o: $(CORE)/%.c | $(BUILD)/p8obj
 	$(P8CC) -o $@ $< $(P8CFLAGS)
 
+# P8MAINDEF: parity builds pass -DP8_PARITY to enable per-flip RAM hashes.
+# The default (demo/boot) ROM omits them so it fits the script time limit.
+P8MAINDEF ?=
 $(BUILD)/p8obj/p8main.o: p8main.c $(BUILD)/cart_hello.h | $(BUILD)/p8obj
-	$(P8CC) -o $@ p8main.c $(P8CFLAGS) -I $(BUILD)
+	$(P8CC) -o $@ p8main.c $(P8CFLAGS) -I $(BUILD) $(P8MAINDEF)
 
 $(BUILD)/p8obj/p8heap.o: p8heap.c p8heap.h | $(BUILD)/p8obj
 	$(P8CC) -o $@ p8heap.c $(P8CFLAGS)

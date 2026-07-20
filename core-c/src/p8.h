@@ -59,4 +59,9 @@ void p8_reset(void);            /* clear RAM, default draw state */
 void p8_open(lua_State *L);     /* register the API as globals */
 uint32_t p8_frame_count(void);  /* frames presented (flip count) */
 
+/* FNV-1a over p8_ram[lo..hi). Identical on host and SNES (runtime index,
+** Calypsi-safe) so it can't itself be a source of parity divergence.
+** hi <= 0x8000 (16-bit size_t on Calypsi). */
+uint32_t p8_hash_region(unsigned lo, unsigned hi);
+
 #endif

@@ -23,6 +23,17 @@ void p8_set_flip(p8_flip_fn fn, void *ud) { flip_fn = fn; flip_ud = ud; }
 void p8_set_buttons(uint16_t p0, uint16_t p1) { p8i_buttons[0] = p0; p8i_buttons[1] = p1; }
 uint32_t p8_frame_count(void) { return frames; }
 
+uint32_t p8_hash_region(unsigned lo, unsigned hi)
+{
+  uint32_t h = 2166136261u;
+  unsigned a;
+  for (a = lo; a < hi; a++) {
+    h ^= p8_ram[a];
+    h *= 16777619u;
+  }
+  return h;
+}
+
 /* number->int with PICO-8 flooring (toward -inf).
 ** M1: lua_Number is still double; becomes a >>16 under fix32 (M1b). */
 int p8a_int(lua_State *L, int idx)

@@ -37,9 +37,11 @@ docs/     project brief, design notes
   deterministically on the reference core, title screen to gameplay.
 - M1.5 done: measured ~30K VM ops/frame for Celeste gameplay, ~1.5K
   title; API-heavy carts near-VM-free.
-- **M3 done: the same core, compiled with Calypsi, boots a cart on the
-  SNES** (`make -C snes test-p8`) — Mode 7 output, framebuffer
-  pixel-exact vs the host oracle (`snes/build/p8boot.png`). Measured
-  **~1,260 VM ops/sec at -O0**; full 256 KB SRAM heap on HiROM.
-- Next: M4 (SNES↔host parity harness), then M5 (heap/GC tuning →
-  Celeste in slow motion on hardware).
+- M3 done: the same core, compiled with Calypsi, boots a cart on the
+  SNES (`make -C snes test-p8`) — Mode 7 output, framebuffer pixel-exact
+  vs the host oracle. Measured ~1,260 VM ops/sec at -O0; 256 KB SRAM heap.
+- **M4 done: the SNES build is proven bit-identical to the host core**
+  (`core-c/tests/snesparity.sh`) — 149 printh vector lines and per-flip
+  framebuffer+RAM hashes all match, across 6 gfx carts and a d-pad input
+  cart. Two Calypsi codegen bugs caught and fixed along the way.
+- Next: M5 (heap/GC tuning → Celeste in slow motion on hardware).

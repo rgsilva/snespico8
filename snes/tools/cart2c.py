@@ -13,7 +13,13 @@ def hexv(c):
         return None
 
 
-def main(src, out):
+def main(src, out, frames=8, inputfile=None):
+    inputs = []
+    if inputfile:
+        for ln in open(inputfile):
+            ln = ln.strip()
+            if ln:
+                inputs.append(int(ln, 16) & 0xFFFF)
     lua = []
     gfx, gmap, gff = [], [], []
     sec = None
@@ -58,6 +64,13 @@ def main(src, out):
             f.write("};\n")
             f.write("static const unsigned int cart_%s_len = %d; /* -> %s */\n"
                     % (name, len(arr), base))
+        # frame count and per-frame player-0 button masks (M4 parity)
+        f.write("static const int cart_frames = %d;\n" % frames)
+        f.write("static const unsigned int cart_input[%d] = {\n  "
+                % max(len(inputs), 1))
+        f.write(",".join(str(m) for m in inputs) if inputs else "0")
+        f.write("\n};\n")
+        f.write("static const unsigned int cart_input_len = %d;\n" % len(inputs))
     # write-if-changed: only bump the file's mtime when the content
     # actually differs, so switching CART reliably rebuilds p8main.o
     # (mtime races don't matter) without needless rebuilds otherwise.
@@ -75,4 +88,7 @@ def main(src, out):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    # cart2c.py src out [frames] [inputfile]
+    fr = int(sys.argv[3]) if len(sys.argv) > 3 else 8
+    inp = sys.argv[4] if len(sys.argv) > 4 else None
+    main(sys.argv[1], sys.argv[2], fr, inp)

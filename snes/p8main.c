@@ -146,6 +146,16 @@ static void snes_flip(void *ud)
   /* TM ($212C) is driven per-scanline by the HDMA set up in video_init */
   MB_FLIPS = (uint16_t)p8_frame_count();
   MB_VMOPS = p8_vmops;
+#ifdef P8_PARITY
+  /* M4 parity: same two-region hash runp8 emits with -H. Gated because
+     the 32 KB scan is slow at -O0 and would push the plain demo/boot ROM
+     past Mesen's script time limit. */
+  mb_puts("HASH ");
+  mb_puthex32(p8_hash_region(0x0000u, 0x6000u));
+  mb_putc(' ');
+  mb_puthex32(p8_hash_region(0x6000u, 0x8000u));
+  mb_putc('\n');
+#endif
 }
 
 /* --- SRAM probe: add distinct HiROM 8 KB windows to the heap --- */
@@ -263,14 +273,24 @@ int main(void)
   run_global(L, "_init");
   mb_puts("init ok\n");
 
-  for (frame = 0; frame < 8; frame++) {
-    run_global(L, "_update");
-    run_global(L, "_draw");
-    lua_getglobal(L, "flip");        /* implicit flip after _draw */
-    if (!lua_isnil(L, -1))
-      lua_call(L, 0, 0);
-    else
-      lua_pop(L, 1);
+  /* pick _update60 vs _update once, like runp8 */
+  lua_getglobal(L, "_update60");
+  {
+    const char *upd = lua_isnil(L, -1) ? "_update" : "_update60";
+    lua_pop(L, 1);
+    for (frame = 0; frame < cart_frames; frame++) {
+      uint16_t mask = (frame < (int)cart_input_len)
+                          ? (uint16_t)cart_input[frame] : 0;
+      p8_set_buttons(mask, 0);
+      p8_input_frame();
+      run_global(L, upd);
+      run_global(L, "_draw");
+      lua_getglobal(L, "flip");      /* implicit flip after _draw */
+      if (!lua_isnil(L, -1))
+        lua_call(L, 0, 0);
+      else
+        lua_pop(L, 1);
+    }
   }
 
   mb_puts("frames ");
