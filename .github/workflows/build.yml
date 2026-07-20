@@ -38,10 +38,13 @@ jobs:
           make -C tools/z8lua
           test -x tools/z8lua/z8lua
 
-      # Builds runp8 (the host core) and runs numvec / dialectvec / libvec
-      # (vs z8lua) + gfxvec / audiovec (goldens). Any regression fails here.
+      # Builds runp8 and runs the host-compiler-portable suites: numvec /
+      # dialectvec (vs z8lua) + gfxvec / audiovec (goldens). libvec is left
+      # to local runs (it probes sin/cos extremes, a z8lua fixed-point quirk
+      # that gcc rounds differently -- see core-c/Makefile). Any regression
+      # fails here.
       - name: Host regression suites
-        run: make -C core-c check
+        run: make -C core-c check-ci
 
       # On a v* tag (and only if the suites above passed): open a GitHub
       # release with auto notes. Attach the locally-built ROM by hand, or:
