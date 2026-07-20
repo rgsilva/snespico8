@@ -1,19 +1,21 @@
-; snes86 — SPC700 8-voice MIDI synth (M14). Replaces the beep driver;
-; the beep is now just a raw-pitch note on voice 7.
+; snespico8 — SPC700 audio driver (M6). Derived from snes86's 8-voice
+; synth: same DSP setup, mailbox handshake and key-on/off, but the note
+; command is PICO-8-native (waveform + pitch 0-63) and the 8 PICO-8
+; waveforms replace the MIDI instruments. M6c adds the autonomous
+; sequencer (ticking SFX/music rows) on top of this note primitive.
 ;
 ; Mailbox (65816 -> SPC), written F4/F5/F6 first, F7 last:
 ;   $F7 = (seq<<4) | op   seq cycles 1-15; SPC acks by echoing to its
 ;                         own port3 ($F7 out) after processing
-;   op 1 = KON     F4=MIDI note, F5=(inst<<4)|voice, F6=velocity 0-127
+;   op 1 = NOTE ON F4=pitch 0-63, F5=(waveform<<4)|voice, F6=volume 0-7
 ;   op 2 = KOF     F4=voice
 ;   op 3 = all notes off
-;   op 4 = KON raw F4/F5 = DSP P lo/hi (voice 7, square, full volume —
-;                          the PC-speaker/BEL path)
+;   op 4 = KON raw F4/F5 = DSP P lo/hi (voice 7, waveform 0 — a raw beep)
 ; dp $00 = keyed-voice bitmask (0 = silent; the test suite reads it).
+; $30 + voice*2 = the DSP P last programmed for that voice (test readback).
 ;
-; Instruments (inst 0-5): SRCN + ADSR pairs from inst_tab; inst 3 uses
-; the 32-sample sine (pitch doubled); inst 5 = percussion (noise via
-; NON + snappy envelope).
+; Waveforms 0-7 (SRCN = waveform): triangle, tilted saw, saw, square,
+; pulse, organ, noise (via DSP NON), phaser. See tools/mkp8snd.py.
 
 .MEMORYMAP
 DEFAULTSLOT 0
@@ -30,12 +32,18 @@ BANKS 1
 .ORG $0200
 .SECTION "Midi" FORCE
 
-; ---- sample directory: 4 entries (start, loop) -----------------------
+; ---- sample directory: 8 PICO-8 waveforms (start, loop) --------------
+; SRCN = PICO-8 waveform number 0..7; each loops its whole single cycle.
+; 8 entries * 4 bytes = 32 bytes -> entry: is at $0220 (see spc2c.py).
 sdir:
-    .dw wav_sq,  wav_sq
-    .dw wav_tri, wav_tri
-    .dw wav_saw, wav_saw
-    .dw wav_sin, wav_sin
+    .dw wav_tri,    wav_tri      ; 0 triangle
+    .dw wav_tsaw,   wav_tsaw     ; 1 tilted saw
+    .dw wav_saw,    wav_saw      ; 2 saw
+    .dw wav_sqr,    wav_sqr      ; 3 square
+    .dw wav_pulse,  wav_pulse    ; 4 pulse
+    .dw wav_organ,  wav_organ    ; 5 organ
+    .dw wav_noise,  wav_noise    ; 6 noise (voice uses DSP NON)
+    .dw wav_phaser, wav_phaser   ; 7 phaser (VERIFY, ear-tuned)
 
 ; dp usage: $00 keyed mask, $01 last F7, $02 cmd, $03 voice, $04 note,
 ;           $05 inst, $06 vel, $07 NON shadow, $08/$09 scratch
@@ -155,51 +163,50 @@ _raw_on:
     mov $00, a
     jmp !ack
 
+; op 1 = PICO-8 NOTE ON
+;   F4 = pitch    0..63
+;   F5 = (waveform<<4) | voice     waveform 0..7, voice 0..7 (PICO-8 uses 0..3)
+;   F6 = volume   0..7
+; SRCN = waveform (direct); GAIN direct-max (the sequencer sets per-tick
+; volume in M6c); NON if waveform 6; pitch from pitch_tab[pitch]. The P we
+; program is stashed at $30 + voice*2 so the M6b test can read it back and
+; confirm the note is in tune.
 do_kon:
     mov a, $F4
-    mov $04, a                   ; note
+    mov $04, a                   ; pitch
     mov a, $F6
-    mov $06, a                   ; velocity
+    mov $06, a                   ; volume 0..7
     mov a, $F5
     and a, #$07
     mov $03, a                   ; voice
     mov a, $F5
     xcn a
     and a, #$0F
-    mov $05, a                   ; inst
+    mov $05, a                   ; waveform 0..7
     ; ---- voice register base = voice<<4 in $09
     mov a, $03
     xcn a
     mov $09, a
-    ; ---- instrument setup: X = inst*4
-    mov a, $05
-    asl a
-    asl a
-    mov x, a
-    mov a, !inst_tab+x            ; SRCN
-    mov $08, a
+    ; ---- SRCN = waveform (direct)
     mov a, $09
     or a, #$04                   ; vN SRCN reg
     mov $F2, a
-    mov a, $08
-    mov $F3, a
-    mov a, !inst_tab+1+x          ; ADSR1
-    mov $08, a
-    mov a, $09
-    or a, #$05
-    mov $F2, a
-    mov a, $08
-    mov $F3, a
-    mov a, !inst_tab+2+x          ; ADSR2
-    mov $08, a
-    mov a, $09
-    or a, #$06
-    mov $F2, a
-    mov a, $08
-    mov $F3, a
-    ; ---- noise on/off for drums (inst 5)
     mov a, $05
-    cmp a, #$05
+    mov $F3, a
+    ; ---- ADSR off -> GAIN direct max (sustained tone)
+    mov a, $09
+    or a, #$05                   ; vN ADSR1
+    mov $F2, a
+    mov a, #$00
+    mov $F3, a
+    mov a, $09
+    or a, #$07                   ; vN GAIN
+    mov $F2, a
+    mov a, #$7F
+    mov $F3, a
+    ; ---- noise on/off: waveform 6 = noise
+    mov a, $05
+    cmp a, #$06
     beq _kon_noise
     mov a, $03
     mov x, a
@@ -215,31 +222,27 @@ _kon_noise:
     or a, $07
     mov $07, a
 _kon_non:
-    mov $F2, #$3D
+    mov $F2, #$3D                ; NON
     mov a, $07
     mov $F3, a
-    ; ---- pitch: pitch_tab[note*2], doubled when inst flag bit0
+    ; ---- pitch: P = pitch_tab[pitch*2]  (32-sample loop, no doubling)
     mov a, $04
     asl a
     mov x, a
     mov a, !pitch_tab+x
-    mov $08, a
+    mov $08, a                   ; P lo
     mov a, !pitch_tab+1+x
-    mov y, a                     ; P hi in Y, lo in $08
-    mov a, $05
-    asl a
+    mov y, a                     ; P hi
+    ; stash P at $30 + voice*2 for the test to verify tuning
+    mov a, $03
     asl a
     mov x, a
-    mov a, !inst_tab+3+x          ; flags
-    and a, #$01
-    beq _p_wr
-    mov a, $08                   ; double: 16-bit asl
-    asl a
-    mov $08, a
+    mov a, $08
+    mov $30+x, a
+    inc x
     mov a, y
-    rol a
-    mov y, a
-_p_wr:
+    mov $30+x, a
+    ; ---- write pitch to the DSP
     mov a, $09
     or a, #$02                   ; vN P lo
     mov $F2, a
@@ -250,30 +253,21 @@ _p_wr:
     mov $F2, a
     mov a, y
     mov $F3, a
-    ; ---- volume from velocity (drums are full-scale noise = far louder
-    ; than the tonal BRR voices; attenuate inst 5 so it doesn't explode)
+    ; ---- volume: vol(0..7) -> DSP VOL L/R = vol<<4  (0..112)
     mov a, $06
-    lsr a                        ; 0-63
+    xcn a
+    and a, #$70
     mov $08, a
-    mov a, $05
-    cmp a, #$05
-    bne _vol_wr
-    lsr $08                      ; drum: 1/16 volume (vel>>5) — noise is
-    lsr $08                      ; harsh + fires hundreds of times; keep it
-    lsr $08                      ; well under the melody
-    lsr $08
-_vol_wr:
     mov a, $09
-    mov $F2, a                   ; vN vol L (reg 0)
+    mov $F2, a                   ; vN vol L
     mov a, $08
     mov $F3, a
     mov a, $09
     or a, #$01
-    mov $F2, a
+    mov $F2, a                   ; vN vol R
     mov a, $08
     mov $F3, a
-    ; ---- key on: clear ONLY this voice's KOF shadow, then KON (leave
-    ; every other voice's release phase untouched)
+    ; ---- key on: clear this voice's KOF shadow, then KON
     mov a, $03
     mov x, a
     mov a, !bitmask+x
@@ -289,16 +283,6 @@ _vol_wr:
     or a, $00
     mov $00, a
     jmp !ack
-
-; inst -> SRCN, ADSR1, ADSR2, flags (bit0 = double pitch/sine)
-inst_tab:
-    .db 1, $AF, $6C, 0           ; 0 pluck  (triangle, A15 D2 S3 R12)
-    .db 0, $8E, $E8, 0           ; 1 organ  (square,   A14 D0 S7 R8)
-    .db 2, $8E, $E8, 0           ; 2 saw sustain (strings/brass)
-    .db 3, $AF, $6C, 1           ; 3 sine pluck
-    .db 2, $86, $E9, 0           ; 4 pad    (saw, slow attack)
-    .db 0, $DF, $00, 0           ; 5 drum   (noise, instant attack, fast
-                                 ; decay to silence — a short tick, no ring)
 
 .INCLUDE "build/p8spc_tables.asm"
 
