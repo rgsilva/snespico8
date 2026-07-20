@@ -23,16 +23,21 @@
 #define MB_STATUS_PASS 1u
 #define MB_STATUS_PANIC 0xDEADu
 
-#define MB_RING_SIZE 7664u
+/* snespico8: bank $7F is the PICO-8 machine RAM, so the mailbox lives
+   at the top of $7E ($7E:F000-$7E:FFFF). $7E:F00A/F00C carry flip and
+   VM-op telemetry for the M3 harness. */
+#define MB_RING_SIZE 3552u
 #define MB_IN_RING_SIZE 512u
 
-#define MB_MAGIC (*(volatile __far uint16_t *)0x7FE000)
-#define MB_STATUS (*(volatile __far uint16_t *)0x7FE002)
-#define MB_WINDEX (*(volatile __far uint16_t *)0x7FE004)
-#define MB_IN_WINDEX (*(volatile __far uint16_t *)0x7FE006)
-#define MB_IN_RINDEX (*(volatile __far uint16_t *)0x7FE008)
-#define MB_RING ((volatile __far uint8_t *)0x7FE010)
-#define MB_IN_RING ((volatile __far uint8_t *)0x7FFE00)
+#define MB_MAGIC (*(volatile __far uint16_t *)0x7EF000)
+#define MB_STATUS (*(volatile __far uint16_t *)0x7EF002)
+#define MB_WINDEX (*(volatile __far uint16_t *)0x7EF004)
+#define MB_IN_WINDEX (*(volatile __far uint16_t *)0x7EF006)
+#define MB_IN_RINDEX (*(volatile __far uint16_t *)0x7EF008)
+#define MB_FLIPS (*(volatile __far uint16_t *)0x7EF00A)
+#define MB_VMOPS (*(volatile __far uint32_t *)0x7EF00C)
+#define MB_RING ((volatile __far uint8_t *)0x7EF010)
+#define MB_IN_RING ((volatile __far uint8_t *)0x7EFE00)
 
 void mb_init(void);
 void mb_putc(char c);

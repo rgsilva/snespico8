@@ -9,7 +9,9 @@
 #include "p8int.h"
 #include "lua/lauxlib.h"
 
+#ifndef __CALYPSI__
 uint8_t p8_ram[P8_RAM_SIZE];
+#endif
 
 static p8_flip_fn flip_fn;
 static void *flip_ud;
@@ -40,7 +42,19 @@ static void rnd_seed(uint32_t seed);
 void p8_reset(void)
 {
   int i;
-  memset(p8_ram, 0, sizeof p8_ram);
+  /* Clear all 64 KB. Two Calypsi constraints (both benign on the host):
+     size_t is 16-bit, so a single memset of P8_RAM_SIZE (0x10000)
+     truncates to 0; and `p8_ram + 0x8000u` mis-folds (the const 0x8000u
+     addend is sign-extended into the bank byte -> $7E:8000 instead of
+     $7F:8000, see bugs/calypsi-const-ptr-offset.c). So walk a running
+     pointer in 0x2000 chunks (addend bit-15 clear, folds correctly). */
+  {
+    uint8_t *p = p8_ram;
+    for (i = 0; i < 8; i++) {
+      memset(p, 0, 0x2000u);
+      p += 0x2000u;
+    }
+  }
   for (i = 0; i < 16; i++) {
     p8_ram[P8_DS_DRAWPAL + i] = (uint8_t)(i == 0 ? 0x10 : i); /* 0 transparent */
     p8_ram[P8_DS_SCRNPAL + i] = (uint8_t)i;

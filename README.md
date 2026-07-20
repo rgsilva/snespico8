@@ -31,8 +31,15 @@ docs/     project brief, design notes
   expansion+DMA ≈ 6 fps ceiling unoptimized (`snes/test/m7demo.png`).
   Rendering will not be the bottleneck.
 - M1 done: PC reference core — fix32 numbers, full P8 dialect and
-  library, all oracle-exact against z8lua (149 vector outputs).
-- **M2 done: full graphics API — Celeste Classic (evercore) runs
-  deterministically on the reference core**, title screen to gameplay.
-- Next: M1.5 (ops/frame measurement → honest SNES speed projection),
-  then M3 (SNES bring-up of this exact core).
+  library, all oracle-exact against z8lua (149 vector outputs) and
+  against **real PICO-8** (`tests/realvec.sh`).
+- M2 done: full graphics API — Celeste Classic (evercore) runs
+  deterministically on the reference core, title screen to gameplay.
+- M1.5 done: measured ~30K VM ops/frame for Celeste gameplay, ~1.5K
+  title; API-heavy carts near-VM-free.
+- **M3 done: the same core, compiled with Calypsi, boots a cart on the
+  SNES** (`make -C snes test-p8`) — Mode 7 output, framebuffer
+  pixel-exact vs the host oracle (`snes/build/p8boot.png`). Measured
+  **~1,260 VM ops/sec at -O0**; full 256 KB SRAM heap on HiROM.
+- Next: M4 (SNES↔host parity harness), then M5 (heap/GC tuning →
+  Celeste in slow motion on hardware).
