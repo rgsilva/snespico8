@@ -61,4 +61,9 @@ docs/     project brief, design notes
   A loadable demo (a melody that plucks + a bass line, over a slow-updating
   screen) builds with `make -C snes demo` — open `snes/build/p8.sfc` in Mesen
   with sound on.
-- Next: M7 (carting/UX — .p8.png+pxa decoder, multi-cart menu, pause menu).
+- **M7 done: the ROM reads the real SNES controller** (`make -C snes
+  test-input`). Auto-joypad on; `read_pad` decodes `$4218/$421A` into
+  `btn()`/`btnp()` each frame (d-pad → dirs, O = B/Y, X = A/X) — the first
+  interactive build. Baked input traces still drive the parity tests, so M4
+  stays pixel-exact. No virtual keyboard: PICO-8 is a joypad machine.
+- Next: M8 (carting/UX — .p8.png loader, multi-cart menu, pause menu).
