@@ -99,8 +99,8 @@ $(BUILD)/p8obj/p8heap.o: p8heap.c p8heap.h | $(BUILD)/p8obj
 # extracts the .ORG $0200 region into a C blob (p8spc_blob.h) that the
 # Calypsi build embeds and apu_upload (p8spc.c) streams into the APU at
 # boot. Waveform BRR + pitch table come from tools/mkmiditab.py.
-$(BUILD)/p8spc_tables.asm: tools/mkmiditab.py | $(BUILD)
-	python3 tools/mkmiditab.py $@
+$(BUILD)/p8spc_tables.asm: tools/mkp8snd.py | $(BUILD)
+	python3 tools/mkp8snd.py $@
 
 $(BUILD)/p8spc.o: p8spc.asm $(BUILD)/p8spc_tables.asm | $(BUILD)
 	$(WLASPC) -o $@ p8spc.asm

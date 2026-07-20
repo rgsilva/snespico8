@@ -61,17 +61,17 @@ static void spc_cmd(uint8_t f4, uint8_t f5, uint8_t f6, uint8_t op)
 
 void p8spc_boot(void) { apu_upload(); }
 
-void p8spc_kon(uint8_t note, uint8_t inst, uint8_t voice, uint8_t vel)
+void p8spc_note(uint8_t pitch, uint8_t wave, uint8_t voice, uint8_t vol)
 {
-  spc_cmd(note, (uint8_t)((inst << 4) | (voice & 7)), vel, 1);
+  spc_cmd(pitch, (uint8_t)((wave << 4) | (voice & 7)), vol, 1);
 }
 void p8spc_kof(uint8_t voice) { spc_cmd(voice, 0, 0, 2); }
 void p8spc_alloff(void)       { spc_cmd(0, 0, 0, 3); }
 
 #else  /* host: no SPC hardware */
 void p8spc_boot(void) { }
-void p8spc_kon(uint8_t n, uint8_t i, uint8_t v, uint8_t vel)
-{ (void)n; (void)i; (void)v; (void)vel; }
+void p8spc_note(uint8_t p, uint8_t w, uint8_t v, uint8_t vol)
+{ (void)p; (void)w; (void)v; (void)vol; }
 void p8spc_kof(uint8_t v) { (void)v; }
 void p8spc_alloff(void) { }
 #endif

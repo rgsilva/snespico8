@@ -10,7 +10,8 @@
 #include <stdint.h>
 
 void p8spc_boot(void);   /* upload + start the driver (silent if no APU) */
-void p8spc_kon(uint8_t note, uint8_t inst, uint8_t voice, uint8_t vel);
+/* key voice (0..3) with PICO-8 waveform (0..7) at pitch (0..63), vol (0..7) */
+void p8spc_note(uint8_t pitch, uint8_t wave, uint8_t voice, uint8_t vol);
 void p8spc_kof(uint8_t voice);
 void p8spc_alloff(void);
 

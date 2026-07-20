@@ -1,15 +1,27 @@
--- M6a APU bring-up test. The ROM (built -DP8_SPC_TEST) uploads the SPC
--- driver, keys three voices, and holds. This harness drains the boot
--- mailbox and samples the driver's voice-mask at SPC $00: it goes non-zero
--- only if the IPL upload landed, the $2140-$2143 transport works, and the
--- driver processed the KON commands (issuing DSP key-ons). That is the
--- whole audio path proven end to end.
+-- M6a/b SPC test. The ROM (built -DP8_SPC_TEST) uploads the driver and
+-- keys four voices with four PICO-8 waveforms at four known pitches, then
+-- holds. This harness checks two things:
+--   (a) upload + transport: the driver's voice mask at SPC $00 goes to
+--       0x0F (voices 0-3 keyed), proving the whole audio path end to end;
+--   (b) in tune: the DSP pitch P the driver programmed (stashed at
+--       $30+voice*2) matches pitch_tab = round(440*2^((pitch-33)/12)*4.096)
+--       for each note -- i.e. the notes are at the right frequency.
 local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF010
 local RING_SIZE = 3552
+-- voices 0..3 were keyed with these PICO-8 pitches:
+local PITCH = {24, 36, 45, 52}
 local frames, sawMagic, readIndex, line = 0, false, 0, ""
-local nz, changes, last, samples = 0, 0, -1, {}
+local nz, last = 0, -1
 
 local function w16(a) return emu.read16(a, emu.memType.snesWorkRam) end
+local function spc(a) return emu.read(a, emu.memType.spcMemory) end
+local function spc16(a) return spc(a) + spc(a + 1) * 256 end
+
+local function expectedP(p)
+  local f = 440.0 * 2 ^ ((p - 33) / 12)
+  local P = math.floor(f * 4.096 + 0.5)
+  return math.max(1, math.min(0x3FFF, P))
+end
 
 local function drain()
   local wi = w16(MB_WINDEX)
@@ -21,6 +33,19 @@ local function drain()
   end
 end
 
+local function check_tuning()
+  local ok = true
+  for v = 0, 3 do
+    local got = spc16(0x30 + v * 2)
+    local want = expectedP(PITCH[v + 1])
+    local d = math.abs(got - want)
+    print(string.format("voice %d pitch %d: P got=%d want=%d %s",
+      v, PITCH[v + 1], got, want, d <= 1 and "OK" or "MISTUNED"))
+    if d > 1 then ok = false end
+  end
+  return ok
+end
+
 emu.addEventCallback(function()
   frames = frames + 1
   if not sawMagic then
@@ -29,24 +54,21 @@ emu.addEventCallback(function()
     return
   end
   drain()
-  local m = emu.read(0, emu.memType.spcMemory)   -- driver dp $00 = voice mask
+  local m = spc(0)                         -- driver dp $00 = voice mask
   if m ~= 0 then nz = nz + 1 end
-  if m ~= last then
-    changes = changes + 1; last = m
-    if #samples < 32 then samples[#samples + 1] = string.format("%02X", m) end
+  last = m
+  if frames % 400 == 0 then
+    print(string.format("f=%d spc00=%02X nz=%d", frames, m, nz))
   end
-  if frames % 300 == 0 then
-    print(string.format("f=%d spc00 nz=%d changes=%d mask=%02X [%s]",
-      frames, nz, changes, last, table.concat(samples, " ")))
-  end
-  if frames > 1500 then
+  if frames > 1200 then
     drain()
-    print(string.format("voicemask nz=%d changes=%d final=%02X", nz, changes, last))
-    if nz > 20 and last ~= 0 then
-      print("RESULT PASS spc (driver uploaded + keyed voices)")
+    local tuned = check_tuning()
+    print(string.format("voicemask final=%02X nz=%d", last, nz))
+    if last == 0x0F and nz > 20 and tuned then
+      print("RESULT PASS spc (4 voices keyed, all in tune)")
       emu.stop(0)
     else
-      print("RESULT FAIL spc (voice mask stayed 0 - upload/transport broken)")
+      print("RESULT FAIL spc (mask/tuning check failed)")
       emu.stop(1)
     end
   end

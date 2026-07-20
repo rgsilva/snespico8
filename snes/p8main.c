@@ -214,15 +214,17 @@ int main(void)
   video_init();
 
 #ifdef P8_SPC_TEST
-  /* M6a bring-up: IPL-upload the driver, key three voices, and hold so the
-   * Mesen harness can read the driver's voice mask at SPC $00 (proof the
-   * upload + $2140-$2143 transport + DSP path all work). */
+  /* M6a/b: IPL-upload the driver, then key four voices with four PICO-8
+   * waveforms at four known pitches. The harness reads the voice mask at
+   * SPC $00 (upload + transport OK) and the programmed DSP pitch at
+   * $30+voice*2 (in tune: matches pitch_tab). Then hold so it can sample. */
   p8spc_boot();
   mb_puts("spc up\n");
-  p8spc_kon(69, 1, 0, 110);   /* A4  organ  voice 0 */
-  p8spc_kon(64, 1, 1, 110);   /* E4  organ  voice 1 */
-  p8spc_kon(72, 0, 2, 110);   /* C5  pluck  voice 2 */
-  mb_puts("kon x3\n");
+  p8spc_note(24, 0, 0, 6);    /* pitch 24 (C4)  triangle  voice 0 */
+  p8spc_note(36, 3, 1, 6);    /* pitch 36 (C5)  square    voice 1 */
+  p8spc_note(45, 2, 2, 6);    /* pitch 45 (A5)  saw       voice 2 */
+  p8spc_note(52, 5, 3, 6);    /* pitch 52 (E6)  organ     voice 3 */
+  mb_puts("notes x4\n");
   for (;;) { }                /* SPC keeps ringing; harness samples + stops */
 #endif
 
