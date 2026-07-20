@@ -592,6 +592,32 @@ static int api_print(lua_State *L)
   return 1;
 }
 
+/* C-callable text for the built-in cart menu (snes/p8main.c, -DP8_MULTICART):
+** draw string s at (x,y) in raw color col (0..15) with the PICO-8 4px font,
+** straight into the framebuffer -- no camera/clip/draw-palette/cursor. Clips
+** to the 128x128 screen itself since p8i_screen_set does not bounds-check. */
+void p8_text(int x, int y, unsigned char col, const char *s)
+{
+  int x0 = x;
+  for (; *s; s++) {
+    unsigned char c = (unsigned char)*s;
+    int px, py;
+    if (c == '\n') { x = x0; y += 6; continue; }
+    for (py = 0; py < 8; py++) {
+      unsigned char row = p8_font[c][py];
+      if (!row)
+        continue;
+      for (px = 0; px < 8; px++)
+        if ((row >> px) & 1) {
+          int xx = x + px, yy = y + py;
+          if ((unsigned)xx < 128u && (unsigned)yy < 128u)
+            p8i_screen_set(xx, yy, (uint8_t)(col & 0x0F));
+        }
+    }
+    x += (c < 128) ? 4 : 8;
+  }
+}
+
 /* ---- btnp (held-frame counters advanced by p8_input_frame) ---- */
 
 static int btnp_hit(int p, int b)

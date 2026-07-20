@@ -66,4 +66,9 @@ docs/     project brief, design notes
   `btn()`/`btnp()` each frame (d-pad → dirs, O = B/Y, X = A/X) — the first
   interactive build. Baked input traces still drive the parity tests, so M4
   stays pixel-exact. No virtual keyboard: PICO-8 is a joypad machine.
-- Next: M8 (carting/UX — .p8.png loader, multi-cart menu, pause menu).
+- **M8 in progress — multi-cart menu ROM** (`make -C snes menu`): bundle
+  several carts into one ROM, pick one with the d-pad, each runs in a fresh
+  `lua_State`, Select returns to the list (`make -C snes test-menu` verifies
+  the whole flow). `.p8.png` loader + pause menu still to come.
+- Next: finish M8, then a docs pass, a curated demo ROM, and CI that builds
+  the free public release; M9 (perf) after that.

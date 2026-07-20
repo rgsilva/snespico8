@@ -21,7 +21,11 @@
 #include "lua/lua.h"
 #include "lua/lauxlib.h"
 #include "lua/lualib.h"
+#ifdef P8_MULTICART
+#include "cart_multi.h"   /* MultiCart carts[], cart_count (tools/multicart2c.py) */
+#else
 #include "cart_hello.h"
+#endif
 
 extern unsigned long p8_vmops; /* lvm.c instruction counter */
 
@@ -244,6 +248,188 @@ static uint16_t read_pad(unsigned long joy)
   return m;
 }
 
+/* Configure a fresh lua_State exactly like runp8: base + coroutine + pico8
+** libs, PICO-8 RAM bound, coroutine aliases under global names, draw API
+** registered. Shared by the single-cart boot and the menu's per-cart launch
+** so the only host<->SNES difference stays the compiler. */
+static void open_pico8_libs(lua_State *L)
+{
+  luaL_requiref(L, "_G", luaopen_base, 1);
+  lua_pop(L, 1);
+  luaL_requiref(L, "coroutine", luaopen_coroutine, 1);
+  lua_pop(L, 1);
+  luaL_requiref(L, "pico8", luaopen_pico8, 1);
+  lua_pop(L, 1);
+  lua_setpico8memory(L, p8_ram);
+  /* PICO-8 exposes coroutines under global names (match runp8 exactly) */
+  lua_getglobal(L, "coroutine");
+  lua_getfield(L, -1, "create");
+  lua_setglobal(L, "cocreate");
+  lua_getfield(L, -1, "resume");
+  lua_setglobal(L, "coresume");
+  lua_getfield(L, -1, "status");
+  lua_setglobal(L, "costatus");
+  lua_getfield(L, -1, "yield");
+  lua_setglobal(L, "yield");
+  lua_pop(L, 1);
+  p8_open(L);
+}
+
+#ifdef P8_MULTICART
+/* ---- built-in multi-cart menu (M8) --------------------------------------
+** main() uploads the SPC + probes the heap once, then loops: run_menu()
+** draws the cart list and returns the pad's pick; run_cart() boots it in a
+** fresh lua_State and, on Select, tears it down. lua_close frees the whole
+** Lua heap back (the p8heap free list coalesces) so the next cart reuses it
+** -- return-to-menu works with no reset. */
+
+/* raw auto-joypad bits for menu control (Select/Start aren't PICO-8 buttons
+** so they're read here directly, not through read_pad's 6-button map) */
+#define PAD_UP     0x0800u
+#define PAD_DOWN   0x0400u
+#define PAD_A      0x0080u
+#define PAD_B      0x8000u
+#define PAD_START  0x1000u
+#define PAD_SELECT 0x2000u
+
+static uint16_t pad_raw(void) { return REG16(0x4218); }
+
+static void wait_release(uint16_t bits)
+{
+  while (pad_raw() & bits) { }     /* spin until those buttons are let go */
+}
+
+/* like run_global but returns -1 instead of killing the ROM, so a crashing
+** cart just drops back to the menu */
+static int menu_run_global(lua_State *L, const char *name)
+{
+  lua_getglobal(L, name);
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    return 0;
+  }
+  if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+    mb_puts("cart err ");
+    mb_puts(name);
+    mb_puts(": ");
+    mb_puts(lua_tostring(L, -1));
+    mb_putc('\n');
+    return -1;
+  }
+  return 0;
+}
+
+static void draw_menu(int sel)
+{
+  int i;
+  memset(p8_ram + 0x6000, 0x11, 0x2000);   /* clear screen to color 1 */
+  p8_text(30, 6, 7, "snespico8");
+  p8_text(34, 16, 6, "pick a cart");
+  for (i = 0; i < cart_count; i++) {
+    int y = 32 + i * 9;
+    if (i == sel)
+      p8_text(14, y, 10, ">");
+    p8_text(22, y, (unsigned char)(i == sel ? 7 : 5), carts[i].name);
+  }
+  p8_text(8, 120, 13, "up/dn move   o play");
+}
+
+static int run_menu(void)
+{
+  static int sel = 0;              /* remembered across menu visits */
+  uint16_t prev = pad_raw();       /* seed with held buttons so releasing the
+                                      launch/return press isn't a fresh hit */
+  int dirty = 1;
+  if (sel >= cart_count)
+    sel = 0;
+  for (;;) {
+    uint16_t cur = pad_raw();
+    uint16_t hit = (uint16_t)(cur & ~prev);
+    prev = cur;
+    if ((hit & PAD_UP) && sel > 0) {
+      sel--;
+      dirty = 1;
+    }
+    if ((hit & PAD_DOWN) && sel < cart_count - 1) {
+      sel++;
+      dirty = 1;
+    }
+    if (hit & (PAD_A | PAD_B | PAD_START)) {
+      wait_release(PAD_A | PAD_B | PAD_START);
+      return sel;
+    }
+    if (dirty) {                    /* redraw only on change: polling stays snappy.
+                                    ** NB: the ~10-frame flip briefly blocks input
+                                    ** sampling, so a press+release entirely within
+                                    ** it is missed -- fine for a human, who holds
+                                    ** the button far longer than 156 ms. */
+      draw_menu(sel);
+      snes_flip(NULL);
+      dirty = 0;
+    }
+  }
+}
+
+static void run_cart(const MultiCart *mc)
+{
+  lua_State *L;
+  int ok;
+
+  p8_reset();                       /* clears PICO-8 RAM + resets audio model */
+  if (mc->gfx_len)   memcpy(p8_ram + 0x0000, mc->gfx, mc->gfx_len);
+  if (mc->map_len)   memcpy(p8_ram + 0x2000, mc->map, mc->map_len);
+  if (mc->gff_len)   memcpy(p8_ram + 0x3000, mc->gff, mc->gff_len);
+  if (mc->music_len) memcpy(p8_ram + 0x3100, mc->music, mc->music_len);
+  if (mc->sfx_len)   memcpy(p8_ram + 0x3200, mc->sfx, mc->sfx_len);
+
+  L = lua_newstate(p8heap_lua_alloc, NULL);
+  if (!L) {
+    mb_puts("newstate FAIL\n");
+    return;                         /* back to the menu */
+  }
+  lua_atpanic(L, on_panic);
+  open_pico8_libs(L);
+  p8_set_flip(snes_flip, NULL);
+  p8spc_load_audio();               /* stream THIS cart's sfx/music to the SPC */
+  p8_set_audio_cmd(snes_audio_cmd);
+
+  ok = (luaL_loadbuffer(L, mc->lua, mc->lua_len, "cart") == LUA_OK) &&
+       (lua_pcall(L, 0, 0, 0) == LUA_OK);
+  if (!ok) {
+    mb_puts("cart load err: ");
+    mb_puts(lua_tostring(L, -1));
+    mb_putc('\n');
+  } else if (menu_run_global(L, "_init") == 0) {
+    long frame;
+    const char *upd;
+    lua_getglobal(L, "_update60");
+    upd = lua_isnil(L, -1) ? "_update" : "_update60";
+    lua_pop(L, 1);
+    for (frame = 0; frame < mc->frames; frame++) {
+      if (pad_raw() & PAD_SELECT)   /* hold Select -> back to the menu */
+        break;
+      p8_set_buttons(read_pad(0x4218ul), read_pad(0x421Aul));
+      p8_input_frame();
+      if (menu_run_global(L, upd) < 0)
+        break;
+      if (menu_run_global(L, "_draw") < 0)
+        break;
+      lua_getglobal(L, "flip");     /* implicit flip after _draw */
+      if (!lua_isnil(L, -1))
+        lua_call(L, 0, 0);
+      else
+        lua_pop(L, 1);
+    }
+  }
+
+  p8spc_alloff();                   /* silence before returning to the menu */
+  p8spc_stop_music();
+  lua_close(L);                     /* frees the whole Lua heap back */
+  /* a still-held Select is harmless: run_menu re-seeds prev on entry, so it
+  ** is never seen as a fresh menu press (and Select isn't a PICO-8 button). */
+}
+#endif /* P8_MULTICART */
+
 int main(void)
 {
   lua_State *L;
@@ -280,6 +466,21 @@ int main(void)
   mb_puthex32(p8heap_free_bytes());
   mb_putc('\n');
 
+#ifdef P8_MULTICART
+  /* M8: the built-in cart menu. Upload the SPC driver once, then loop
+  ** forever: draw the list, pick a cart, run it, come back on Select. */
+  (void)L; (void)frame;
+  p8spc_boot();
+  mb_puts("menu ready\n");
+  for (;;) {
+    int pick = run_menu();
+    mb_puts("launch ");
+    mb_puthex32((unsigned long)pick);
+    mb_putc('\n');
+    run_cart(&carts[pick]);
+    mb_puts("to menu\n");
+  }
+#else
   /* PICO-8 RAM + cart assets */
   p8_reset();
   if (cart_gfx_len) memcpy(p8_ram + 0x0000, cart_gfx, cart_gfx_len);
@@ -308,26 +509,7 @@ int main(void)
     mb_finish(MB_STATUS_PANIC);
   }
   lua_atpanic(L, on_panic);
-  luaL_requiref(L, "_G", luaopen_base, 1);
-  lua_pop(L, 1);
-  luaL_requiref(L, "coroutine", luaopen_coroutine, 1);
-  lua_pop(L, 1);
-  luaL_requiref(L, "pico8", luaopen_pico8, 1);
-  lua_pop(L, 1);
-  lua_setpico8memory(L, p8_ram);
-  /* PICO-8 exposes coroutines under global names (match runp8 exactly so
-     the only host<->SNES difference is the compiler) */
-  lua_getglobal(L, "coroutine");
-  lua_getfield(L, -1, "create");
-  lua_setglobal(L, "cocreate");
-  lua_getfield(L, -1, "resume");
-  lua_setglobal(L, "coresume");
-  lua_getfield(L, -1, "status");
-  lua_setglobal(L, "costatus");
-  lua_getfield(L, -1, "yield");
-  lua_setglobal(L, "yield");
-  lua_pop(L, 1);
-  p8_open(L);
+  open_pico8_libs(L);
   p8_set_flip(snes_flip, NULL);
   /* M6d: bring up the SPC audio driver, stream the cart's sfx/music into
    * it, and route sfx()/music() there. The SPC then plays in real time
@@ -392,5 +574,6 @@ int main(void)
   mb_putc('\n');
   mb_puts("M3 PASS\n");
   mb_finish(MB_STATUS_PASS);
+#endif /* P8_MULTICART */
   return 0;
 }
