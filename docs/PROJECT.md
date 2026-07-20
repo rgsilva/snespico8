@@ -139,9 +139,12 @@ logic; audio/game-time divergence accepted and documented.
 
 ## Unsupported / deferred (phase 1)
 
-splore/BBS, devkit keyboard, mouse (SNES mouse = fun stretch goal), GPIO/
-serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest 0.2.5+ API
-tail (phased), byte-exact `^` vs real PICO-8 (matches our oracle instead).
+splore/BBS, devkit keyboard (PICO-8 is a joypad machine — `stat(30/31)` is
+off by default and few carts use it; 8 buttons can't type without an
+on-screen letter-picker, so if a specific cart ever forces the issue it'd
+be a d-pad overlay, not a real keyboard), mouse (SNES mouse = fun stretch
+goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
+0.2.5+ API tail (phased), byte-exact `^` vs real PICO-8 (matches oracle).
 
 ## Milestones
 
@@ -393,11 +396,25 @@ tail (phased), byte-exact `^` vs real PICO-8 (matches our oracle instead).
         bit-identical), so both sides issue the same commands. stat() audio
         position on the SNES reflects the frozen host model (real-time
         position lives on the SPC) — the documented divergence, like time().
-- [ ] M7: carting/UX — .p8.png+pxa decoder, multi-cart menu ROM,
+- [x] M7: **live controller input — the ROM reads the real SNES pad.** Enable
+      auto-joypad ($4200 bit 0); read_pad() decodes $4218/$421A into a PICO-8
+      button mask each frame (d-pad -> P8 dirs, O = B or Y, X = A or X) and
+      feeds btn()/btnp() -- the first genuinely interactive build. A baked
+      cart_input trace still overrides for the deterministic parity/input
+      tests; a normal cart (no trace) reads the live pad, and an idle pad
+      reads 0 exactly like the old path, so M4 parity is unaffected (test-p8
+      still boots pixel-exact vs the oracle). Verified end to end: `make -C
+      snes test-input` drives the pad with setInput and m7_input.p8's dot
+      moves through all four directions + both face-button columns -- the
+      decoded mask ($7E:61B2) and the cart's on-screen response both checked.
+      No virtual keyboard: PICO-8 is a joypad machine (devkit keyboard stays
+      deferred; a d-pad overlay is the only way it could ever be done, and few
+      carts need it).
+- [ ] M8: carting/UX — .p8.png+pxa decoder, multi-cart menu ROM,
       pause/menuitem, btnp repeat
-- [ ] M8: perf passes — asm hot paths, measured fps corpus
-- [ ] M9: real hardware, stock SNES, flash cart
-- [ ] M10: SA-1 tier — 4x clock + 256 KB linear heap
+- [ ] M9: perf passes — asm hot paths, measured fps corpus
+- [ ] M10: real hardware, stock SNES, flash cart
+- [ ] M11: SA-1 tier — 4x clock + 256 KB linear heap
 
 ## Style / working preferences
 

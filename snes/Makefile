@@ -72,6 +72,8 @@ CART ?= ../core-c/tests/carts/m3_boot.p8
 # extra per-flip hashing fits Mesen's script time limit). INPUT = optional
 # sidecar file of per-frame hex button masks.
 FRAMES ?= 8
+# PLAYCART = the cart the interactive `play` target builds (see below).
+PLAYCART ?= ../core-c/tests/carts/m7_input.p8
 .PHONY: FORCE
 $(BUILD)/cart_hello.h: $(CART) tools/cart2c.py FORCE | $(BUILD)
 	python3 tools/cart2c.py $(CART) $@ $(FRAMES) $(INPUT)
@@ -179,6 +181,15 @@ test-fx:
 	$(MESEN) --testrunner $(BUILD)/p8.sfc test/fx.lua
 	rm -f $(BUILD)/p8obj/p8main.o
 
+# M7a: live controller input. A NORMAL ROM (no test define, no baked input
+# trace) runs m7_input.p8; test/input.lua drives the SNES pad with setInput
+# and checks the dot moved via btn() -- proving the auto-joypad read reaches
+# the cart. FRAMES is huge so the loop stays alive for the whole run.
+.PHONY: test-input
+test-input:
+	$(MAKE) p8 CART=../core-c/tests/carts/m7_input.p8 FRAMES=100000
+	$(MESEN) --testrunner $(BUILD)/p8.sfc test/input.lua
+
 # A loadable audio-demo ROM: a real melody + bass that loops (the SPC plays
 # it in real time) with a slowly-updating screen. Build then open
 # build/p8.sfc in Mesen with sound ON -- this is meant to be heard, not run
@@ -190,6 +201,15 @@ demo:
 	$(MAKE) p8 CART=../core-c/tests/carts/m6_demo.p8 FRAMES=60000
 	rm -f $(BUILD)/p8obj/p8main.o
 	@echo "==> Loadable demo at $(BUILD)/p8.sfc -- open in Mesen with sound on."
+
+# M7: build any cart as an INTERACTIVE ROM (huge FRAMES so it runs until
+# reset) that reads the live SNES pad. Defaults to the m7_input dot probe;
+# override with e.g. `make play PLAYCART=path/to/cart.p8`. Open build/p8.sfc
+# in Mesen (or on hardware) and drive it with a controller.
+.PHONY: play
+play:
+	$(MAKE) p8 CART="$(PLAYCART)" FRAMES=1000000000
+	@echo "==> Interactive ROM at $(BUILD)/p8.sfc -- open in Mesen and drive it with a pad."
 
 # M5c: boot Celeste Classic on the SNES. The cart is CC-BY-NC-SA and not
 # committed; fetch it first (same as core-c/tests/celeste.sh):

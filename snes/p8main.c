@@ -225,6 +225,25 @@ static void snes_audio_cmd(int kind, int a, int b, int c, int d)
   }
 }
 
+/* --- live controller: SNES auto-joypad ($4218 = joy1, $421A = joy2) into a
+** PICO-8 button mask. P8 bits: 0=Left 1=Right 2=Up 3=Down 4=O 5=X. Either
+** face-button column works (O = SNES B or Y, X = SNES A or X) so the mapping
+** feels natural whichever pair a cart treats as primary. Auto-joypad ($4200
+** bit 0) makes the PPU relatch the pad every vblank, so a single read per
+** (slow) game frame reflects the current state -- no manual $4016 strobe. */
+static uint16_t read_pad(unsigned long joy)
+{
+  uint16_t w = REG16(joy);
+  uint16_t m = 0;
+  if (w & 0x0200u) m |= 1u << 0;   /* Left  (bit 9)  */
+  if (w & 0x0100u) m |= 1u << 1;   /* Right (bit 8)  */
+  if (w & 0x0800u) m |= 1u << 2;   /* Up    (bit 11) */
+  if (w & 0x0400u) m |= 1u << 3;   /* Down  (bit 10) */
+  if (w & 0xC000u) m |= 1u << 4;   /* O = B (15) or Y (14) */
+  if (w & 0x00C0u) m |= 1u << 5;   /* X = A (7)  or X (6)  */
+  return m;
+}
+
 int main(void)
 {
   lua_State *L;
@@ -234,6 +253,8 @@ int main(void)
   mb_init();
   mb_puts("boot\n");
   video_init();
+  REG8(0x4200) = 0x01;   /* auto-joypad read on (NMI/IRQ off): the PPU
+                            latches both pads every vblank for read_pad() */
 
 #ifdef P8_SPC_TEST
   /* M6a/b: IPL-upload the driver, then key four voices with four PICO-8
@@ -340,9 +361,19 @@ int main(void)
     const char *upd = lua_isnil(L, -1) ? "_update" : "_update60";
     lua_pop(L, 1);
     for (frame = 0; frame < cart_frames; frame++) {
-      uint16_t mask = (frame < (int)cart_input_len)
-                          ? (uint16_t)cart_input[frame] : 0;
-      p8_set_buttons(mask, 0);
+      /* A baked cart_input trace (from cart2c) keeps the parity/input tests
+      ** deterministic; a normal cart ships none -> read the live pad. Carts
+      ** without a trace also don't move the hashed RAM off input, so parity
+      ** is unaffected (an idle pad reads 0, exactly like the old path). */
+      uint16_t mask, mask2;
+      if (cart_input_len) {
+        mask = (frame < (int)cart_input_len) ? (uint16_t)cart_input[frame] : 0;
+        mask2 = 0;
+      } else {
+        mask = read_pad(0x4218ul);
+        mask2 = read_pad(0x421Aul);
+      }
+      p8_set_buttons(mask, mask2);
       p8_input_frame();
       run_global(L, upd);
       run_global(L, "_draw");
