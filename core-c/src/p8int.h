@@ -37,4 +37,9 @@ extern uint8_t p8i_held[2][8];
 
 void p8gfx_open(lua_State *L); /* registers the drawing API + stubs */
 
+/* audio (p8audio.c) */
+void p8audio_open(lua_State *L); /* registers sfx, music; resets state */
+void p8_audio_reset(void);
+int  p8_audio_stat(int n);       /* stat(16..24) or P8_STAT_NONE */
+
 #endif
