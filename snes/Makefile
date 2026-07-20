@@ -250,6 +250,20 @@ test-demo:
 	$(MAKE) demo-rom
 	$(MESEN) --testrunner $(BUILD)/p8.sfc test/demorom.lua
 
+# M14: the free public release ROM -- the demo ROM (our runtime + our own
+# demo carts; zero Lexaloffle/BBS assets, so freely redistributable), copied
+# to a release-named file. Build this LOCALLY: Calypsi is not redistributable
+# into a public CI, so the release ROM is built here and attached to the
+# GitHub release by hand. CI (.github/workflows) runs the host suites.
+RELEASEROM ?= $(BUILD)/snespico8.sfc
+.PHONY: release
+release:
+	$(MAKE) demo-rom
+	cp $(BUILD)/p8.sfc $(RELEASEROM)
+	@echo "==> Release ROM: $(RELEASEROM)"
+	@echo "    Free public build: snespico8 runtime + our own demo carts."
+	@echo "    Attach this to a GitHub release (see docs/PROJECT.md M14)."
+
 # M5c: boot Celeste Classic on the SNES. The cart is CC-BY-NC-SA and not
 # committed; fetch it first (same as core-c/tests/celeste.sh):
 #   curl -sL -o ../core-c/tests/carts-external/celeste.p8 \

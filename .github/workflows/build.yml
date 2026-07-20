@@ -1,0 +1,61 @@
+name: build
+
+# Host-side CI. It builds the portable core and runs the regression suites
+# that need only gcc + the open-source z8lua oracle. It intentionally does
+# NOT build the SNES ROM: that needs the Calypsi toolchain, which is licensed
+# for personal use only and may not be redistributed into a public runner.
+# Because M4 proved the Calypsi-compiled SNES build is bit-identical to this
+# host core, a green host suite is strong regression coverage. The flashable
+# release ROM is built locally with `make -C snes release` and attached to
+# the release by hand (see docs/PROJECT.md, M14).
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: write        # create a release on a v* tag
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+
+      # z8lua is the correctness oracle for the numeric/dialect/lib vectors.
+      # Pinned to the commit the committed goldens were produced against.
+      - name: Build the z8lua oracle
+        run: |
+          git clone https://github.com/samhocevar/z8lua.git tools/z8lua
+          git -C tools/z8lua checkout 8575dfbc
+          make -C tools/z8lua
+          test -x tools/z8lua/z8lua
+
+      # Builds runp8 (the host core) and runs numvec / dialectvec / libvec
+      # (vs z8lua) + gfxvec / audiovec (goldens). Any regression fails here.
+      - name: Host regression suites
+        run: make -C core-c check
+
+      # On a v* tag (and only if the suites above passed): open a GitHub
+      # release with auto notes. Attach the locally-built ROM by hand, or:
+      #   make -C snes release && gh release upload "$TAG" snes/build/snespico8.sfc
+      - name: Create release on a version tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            snespico8 release.
+
+            This CI verified the portable runtime and its host regression
+            suites. The flashable SNES ROM is built locally with
+            `make -C snes release` (the Calypsi toolchain cannot be
+            redistributed into CI) and attached here by hand -- see
+            docs/PROJECT.md (M14). The ROM ships only our own carts (no
+            Lexaloffle/BBS assets), so it is freely redistributable.
