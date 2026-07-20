@@ -346,7 +346,47 @@ tail (phased), byte-exact `^` vs real PICO-8 (matches our oracle instead).
         aspirational, but it genuinely boots and runs. Screenshot + the
         Celeste cart are BBS assets (CC-BY-NC-SA), kept local, not
         committed; the harness (`snes/test/celeste.lua`) is.
-- [ ] M6: audio — SPC driver + sequencer, real-time; event-trace parity
+- [x] M6: **audio — the SPC plays SFX + music in real time while the game
+      loop crawls.** The signature design decision, working end to end on the
+      SNES. Split into a host model + four SNES stages, each verified in Mesen.
+  - [x] M6-host: **PICO-8 audio sequencer model** (`core-c/src/p8audio.c`) —
+        the reference sequencer logic (channel allocation, note advance, sfx
+        loops, music-pattern chaining) that the SPC mirrors, plus stat(16..24)
+        and the sfx()/music() command seam. SFX (0x3200) / music (0x3100)
+        memory format VERIFIED against real PICO-8 by peeking memory back
+        (`docs/audio-format.md`); note timing uses the zepto8 reference
+        constant (speed ticks at 120.5 Hz) since headless PICO-8 doesn't run
+        the mixer. `tests/audiovec.sh` goldens the command trace + stat dump.
+  - [x] M6a: **APU bring-up** (`snes/p8spc.c/.asm`, `make -C snes test-spc`).
+        apu_upload (the IPL handshake) ported verbatim to C from snes86; the
+        resident driver (snes86's proven synth) uploaded and driven over the
+        $2140-$2143 mailbox. RESULT PASS: voice mask at SPC $00 goes 00->07,
+        proving upload + transport + DSP key-ons work.
+  - [x] M6b: **8 PICO-8 waveforms as BRR + pitch table** (`tools/mkp8snd.py`).
+        triangle/tilted-saw/saw/square/pulse/organ/noise/phaser as looped BRR;
+        pitch 0-63 -> DSP P. test-spc keys 4 waveforms at 4 pitches and the
+        programmed DSP pitch matches the reference formula EXACTLY (in tune).
+  - [x] M6c: **autonomous SPC sequencer** (`make -C snes test-spcseq`). A
+        hardware timer (T0 ~121 Hz) ticks the sequencer independently of the
+        65816; the cart's SFX/music are streamed into SPC RAM once, then the
+        65816 only says "play sfx/pattern". Ported from the host model:
+        per-channel row advance, sfx loops, and the music player (pattern
+        chaining, loop-start/-end/stop). RESULT PASS: streamed data matches,
+        the timer heartbeat advances on its own, the player chains patterns
+        0->1->loop, and notes key across channels — 65816 idle throughout.
+        Effects (word bits 12-14: slide/vibrato/drop/fade/arp) are decoded in
+        the format but not yet applied per-tick — notes play at base
+        pitch/volume; per-tick modulation is the remaining audio polish.
+  - [x] M6d: **real carts drive the audio** (`make -C snes test-audio`). The
+        core's sfx()/music() route to the SPC (`snes/p8main.c`
+        snes_audio_cmd); boot + stream + register happen in the normal path.
+        A normal ROM runs a cart whose _init calls music(0) and the SPC plays
+        the song, chaining patterns, in real time — 65816 does nothing after.
+        Event-trace parity is inherited from M4: the sfx()/music() command
+        stream is deterministic and the SNES runs identical Lua (proven
+        bit-identical), so both sides issue the same commands. stat() audio
+        position on the SNES reflects the frozen host model (real-time
+        position lives on the SPC) — the documented divergence, like time().
 - [ ] M7: carting/UX — .p8.png+pxa decoder, multi-cart menu ROM,
       pause/menuitem, btnp repeat
 - [ ] M8: perf passes — asm hot paths, measured fps corpus

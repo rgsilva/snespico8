@@ -49,4 +49,13 @@ docs/     project brief, design notes
   game loop, draws its title through Mode 7. Heap peak ~100 KB, zero
   allocation failures (HiROM 8 KB windows suffice — measured on host
   first via `runp8 -M`, confirmed on hardware). stat(0) + graceful OOM.
-- Next: M6 (SPC700 audio — real-time music while the game runs slow).
+- **M6 done: the SPC plays SFX + music in real time while the game loop
+  crawls** — the signature effect. The SPC700 runs an autonomous sequencer
+  (timer-ticked at ~121 Hz) from the cart's SFX/music streamed into its own
+  RAM; the core's `sfx()`/`music()` just send "play" commands. 8 PICO-8
+  waveforms as looped BRR, notes in tune to the DSP pitch register. A cart's
+  `music(0)` drives the SPC end to end (`make -C snes test-audio`); the SPC
+  keeps playing after the game loop stops. Per-tick effects
+  (slide/vibrato/drop/fade/arp) are decoded but not yet applied — the
+  remaining audio polish.
+- Next: M7 (carting/UX — .p8.png+pxa decoder, multi-cart menu, pause menu).
