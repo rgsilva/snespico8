@@ -148,6 +148,17 @@ test-spc:
 	$(MESEN) --testrunner $(BUILD)/p8.sfc test/spc.lua
 	rm -f $(BUILD)/p8obj/p8main.o
 
+# M6c: the autonomous SPC sequencer. Builds with -DP8_SPC_SEQ and a cart
+# that has sfx (m6_audio), streams the audio into the SPC and plays sfx 0;
+# test/spcseq.lua checks the timer heartbeat, the streamed data, and the
+# channel's row advancing on its own -- i.e. real-time sequencing.
+.PHONY: test-spcseq
+test-spcseq:
+	rm -f $(BUILD)/p8obj/p8main.o
+	$(MAKE) p8 P8MAINDEF=-DP8_SPC_SEQ CART=../core-c/tests/carts/m6_audio.p8
+	$(MESEN) --testrunner $(BUILD)/p8.sfc test/spcseq.lua
+	rm -f $(BUILD)/p8obj/p8main.o
+
 # M5c: boot Celeste Classic on the SNES. The cart is CC-BY-NC-SA and not
 # committed; fetch it first (same as core-c/tests/celeste.sh):
 #   curl -sL -o ../core-c/tests/carts-external/celeste.p8 \

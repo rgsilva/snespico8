@@ -13,6 +13,43 @@ def hexv(c):
         return None
 
 
+def sfx_bytes(t):
+    """__sfx__ line (168 hex) -> 68 bytes: 32 LE note words then the 4-byte
+    footer (mode, speed, loopstart, loopend). Mirrors runp8 parse_sfx_line."""
+    nb = [hexv(c) for c in t if hexv(c) is not None]
+    if len(nb) < 8:
+        return None
+    out = [0] * 68
+    out[64:68] = [(nb[0] << 4) | nb[1], (nb[2] << 4) | nb[3],
+                  (nb[4] << 4) | nb[5], (nb[6] << 4) | nb[7]]
+    for k in range(32):
+        o = 8 + k * 5
+        if o + 5 > len(nb):
+            break
+        word = (((nb[o] << 4) | nb[o + 1]) & 0x3f) | (nb[o + 2] << 6) \
+            | (nb[o + 3] << 9) | (nb[o + 4] << 12)
+        out[k * 2] = word & 0xff
+        out[k * 2 + 1] = (word >> 8) & 0xff
+    return out
+
+
+def music_bytes(t):
+    """__music__ line "FF CCCCCCCC" -> 4 channel bytes with the loop flags
+    folded into bit 7 of bytes 0/1/2. Mirrors runp8 parse_music_line."""
+    nb = [hexv(c) for c in t if hexv(c) is not None]
+    if len(nb) < 10:
+        return None
+    flags = (nb[0] << 4) | nb[1]
+    ch = [(nb[2 + j * 2] << 4) | nb[3 + j * 2] for j in range(4)]
+    if flags & 1:
+        ch[0] |= 0x80
+    if flags & 2:
+        ch[1] |= 0x80
+    if flags & 4:
+        ch[2] |= 0x80
+    return ch
+
+
 def main(src, out, frames=8, inputfile=None):
     inputs = []
     if inputfile:
@@ -21,13 +58,14 @@ def main(src, out, frames=8, inputfile=None):
             if ln:
                 inputs.append(int(ln, 16) & 0xFFFF)
     lua = []
-    gfx, gmap, gff = [], [], []
+    gfx, gmap, gff, sfx, music = [], [], [], [], []
     sec = None
     for line in open(src, encoding="utf-8"):
         t = line.rstrip("\n")
         if t.startswith("__"):
             sec = {"__lua__": "lua", "__gfx__": "gfx", "__map__": "map",
-                   "__gff__": "gff"}.get(t.strip(), "skip")
+                   "__gff__": "gff", "__sfx__": "sfx",
+                   "__music__": "music"}.get(t.strip(), "skip")
             continue
         if sec == "lua":
             lua.append(t + "\n")
@@ -40,6 +78,14 @@ def main(src, out, frames=8, inputfile=None):
             arr = gmap if sec == "map" else gff
             for i in range(0, len(digs) - 1, 2):
                 arr.append((digs[i] << 4) | digs[i + 1])  # "ab" -> 0xab
+        elif sec == "sfx" and len(sfx) < 64 * 68:
+            b = sfx_bytes(t)
+            if b:
+                sfx.extend(b)
+        elif sec == "music" and len(music) < 64 * 4:
+            b = music_bytes(t)
+            if b:
+                music.extend(b)
 
     import io
     src_bytes = "".join(lua).encode("utf-8")
@@ -53,7 +99,8 @@ def main(src, out, frames=8, inputfile=None):
         f.write("  0\n};\n")
         f.write("static const unsigned int cart_lua_len = %d;\n" % len(src_bytes))
         for name, arr, base in (("gfx", gfx, "0x0000"), ("map", gmap, "0x2000"),
-                                ("gff", gff, "0x3000")):
+                                ("gff", gff, "0x3000"), ("music", music, "0x3100"),
+                                ("sfx", sfx, "0x3200")):
             f.write("static const unsigned char cart_%s[%d] = {\n"
                     % (name, max(len(arr), 1)))
             if arr:
@@ -81,8 +128,10 @@ def main(src, out, frames=8, inputfile=None):
         old = None
     if new != old:
         open(out, "w").write(new)
-        print("cart2c: %s -> %s (lua %dB, gfx %dB, map %dB, gff %dB)"
-              % (src, out, len(src_bytes), len(gfx), len(gmap), len(gff)))
+        print("cart2c: %s -> %s (lua %dB, gfx %dB, map %dB, gff %dB, "
+              "sfx %dB, music %dB)"
+              % (src, out, len(src_bytes), len(gfx), len(gmap), len(gff),
+                 len(sfx), len(music)))
     else:
         print("cart2c: %s unchanged" % out)
 

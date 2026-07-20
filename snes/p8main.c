@@ -242,6 +242,22 @@ int main(void)
   if (cart_gfx_len) memcpy(p8_ram + 0x0000, cart_gfx, cart_gfx_len);
   if (cart_map_len) memcpy(p8_ram + 0x2000, cart_map, cart_map_len);
   if (cart_gff_len) memcpy(p8_ram + 0x3000, cart_gff, cart_gff_len);
+  if (cart_music_len) memcpy(p8_ram + 0x3100, cart_music, cart_music_len);
+  if (cart_sfx_len) memcpy(p8_ram + 0x3200, cart_sfx, cart_sfx_len);
+
+#ifdef P8_SPC_SEQ
+  /* M6c: upload the driver, stream the cart audio into the SPC, and let it
+   * sequence sfx 0 on channel 0 autonomously in real time. The harness
+   * checks the timer heartbeat, the streamed data, and the channel's row
+   * advancing on its own. Needs a cart with sfx (CART=m6_audio). */
+  p8spc_boot();
+  mb_puts("spc up\n");
+  p8spc_load_audio();
+  mb_puts("audio loaded\n");
+  p8spc_play_music(0);          /* start the song; the SPC chains patterns */
+  mb_puts("play music0\n");
+  for (;;) { }
+#endif
 
   L = lua_newstate(p8heap_lua_alloc, NULL);
   if (!L) {

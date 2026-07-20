@@ -3,6 +3,7 @@
 ** (p8spc.asm) and apu_upload handshake verbatim; M6b/c evolve the driver
 ** into the PICO-8 real-time sequencer. SNES-only; host builds are no-ops. */
 #include "p8spc.h"
+#include "p8.h"           /* p8_ram, P8_SFX, P8_SONG */
 
 #ifdef __CALYPSI__
 #include "p8spc_blob.h"   /* generated: p8spc_blob[], P8SPC_ADDR/ENTRY/LEN */
@@ -68,10 +69,36 @@ void p8spc_note(uint8_t pitch, uint8_t wave, uint8_t voice, uint8_t vol)
 void p8spc_kof(uint8_t voice) { spc_cmd(voice, 0, 0, 2); }
 void p8spc_alloff(void)       { spc_cmd(0, 0, 0, 3); }
 
+/* stream `len` bytes to SPC RAM at `dest` via op8 (set ptr) + op9 (byte) */
+static void spc_load(uint16_t dest, const uint8_t *src, uint16_t len)
+{
+  uint16_t i;
+  spc_cmd((uint8_t)(dest & 0xff), (uint8_t)(dest >> 8), 0, 8);
+  for (i = 0; i < len; i++)
+    spc_cmd(src[i], 0, 0, 9);
+}
+
+void p8spc_load_audio(void)
+{
+  spc_load(0x1000, &p8_ram[P8_SFX], 64u * 68u);   /* SFX  -> SPC $1000 */
+  spc_load(0x2200, &p8_ram[P8_SONG], 64u * 4u);   /* song -> SPC $2200 */
+}
+
+void p8spc_play_sfx(uint8_t sfx, uint8_t channel)
+{
+  spc_cmd(sfx, channel, 0, 5);
+}
+void p8spc_play_music(uint8_t pattern) { spc_cmd(pattern, 0, 0, 6); }
+void p8spc_stop_music(void)            { spc_cmd(0, 0, 0, 7); }
+
 #else  /* host: no SPC hardware */
 void p8spc_boot(void) { }
 void p8spc_note(uint8_t p, uint8_t w, uint8_t v, uint8_t vol)
 { (void)p; (void)w; (void)v; (void)vol; }
 void p8spc_kof(uint8_t v) { (void)v; }
 void p8spc_alloff(void) { }
+void p8spc_load_audio(void) { }
+void p8spc_play_sfx(uint8_t s, uint8_t c) { (void)s; (void)c; }
+void p8spc_play_music(uint8_t p) { (void)p; }
+void p8spc_stop_music(void) { }
 #endif
