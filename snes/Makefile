@@ -114,6 +114,16 @@ $(BUILD)/p8.sfc: $(BUILD)/p8.raw tools/raw2sfc.py
 test-p8: $(BUILD)/p8.sfc
 	$(MESEN) --testrunner $(BUILD)/p8.sfc test/p8boot.lua
 
+# M5c: boot Celeste Classic on the SNES. The cart is CC-BY-NC-SA and not
+# committed; fetch it first (same as core-c/tests/celeste.sh):
+#   curl -sL -o ../core-c/tests/carts-external/celeste.p8 \
+#     https://raw.githubusercontent.com/CelesteClassic/evercore/main/evercore.p8
+# Slow: ~1 min emulated to parse 27KB of Lua, then a few gameplay frames.
+.PHONY: test-celeste
+test-celeste:
+	$(MAKE) p8 CART=../core-c/tests/carts-external/celeste.p8
+	$(MESEN) --testrunner $(BUILD)/p8.sfc test/celeste.lua
+
 $(BUILD):
 	mkdir -p $(BUILD)
 

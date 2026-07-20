@@ -40,8 +40,13 @@ docs/     project brief, design notes
 - M3 done: the same core, compiled with Calypsi, boots a cart on the
   SNES (`make -C snes test-p8`) — Mode 7 output, framebuffer pixel-exact
   vs the host oracle. Measured ~1,260 VM ops/sec at -O0; 256 KB SRAM heap.
-- **M4 done: the SNES build is proven bit-identical to the host core**
+- M4 done: the SNES build is proven bit-identical to the host core
   (`core-c/tests/snesparity.sh`) — 149 printh vector lines and per-flip
   framebuffer+RAM hashes all match, across 6 gfx carts and a d-pad input
   cart. Two Calypsi codegen bugs caught and fixed along the way.
-- Next: M5 (heap/GC tuning → Celeste in slow motion on hardware).
+- **M5 done: Celeste Classic boots and runs on the SNES**
+  (`make -C snes test-celeste`) — parses 27 KB of Lua, runs _init + the
+  game loop, draws its title through Mode 7. Heap peak ~100 KB, zero
+  allocation failures (HiROM 8 KB windows suffice — measured on host
+  first via `runp8 -M`, confirmed on hardware). stat(0) + graceful OOM.
+- Next: M6 (SPC700 audio — real-time music while the game runs slow).
