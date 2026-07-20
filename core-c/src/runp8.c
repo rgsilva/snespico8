@@ -134,6 +134,7 @@ static uint32_t fnv1a(const uint8_t *p, size_t n)
 }
 
 static unsigned long ops_at_last_flip;
+static int hash_mode; /* -H: emit machine-RAM parity hashes per flip */
 
 static void on_flip(void *ud)
 {
@@ -142,6 +143,13 @@ static void on_flip(void *ud)
          (unsigned)fnv1a(&p8_ram[P8_SCREEN], 0x2000),
          p8_vmops - ops_at_last_flip);
   ops_at_last_flip = p8_vmops;
+  if (hash_mode)
+    /* two regions so a divergence localizes: low RAM [0,0x6000)
+       (gfx/map/flags/sfx/music/user/persist/draw+hw state) and the
+       screen [0x6000,0x8000). Must match p8main's snes_flip exactly. */
+    printf("HASH %08x %08x\n",
+           (unsigned)p8_hash_region(0x0000u, 0x6000u),
+           (unsigned)p8_hash_region(0x6000u, 0x8000u));
 }
 
 /* ---- PPM dump for eyeballing ---- */
@@ -206,6 +214,7 @@ int main(int argc, char **argv)
     if (!strcmp(argv[i], "-n") && i + 1 < argc) nframes = atoi(argv[++i]);
     else if (!strcmp(argv[i], "-i") && i + 1 < argc) inputs = argv[++i];
     else if (!strcmp(argv[i], "-p") && i + 1 < argc) ppm = argv[++i];
+    else if (!strcmp(argv[i], "-H")) hash_mode = 1;
     else cart = argv[i];
   }
   if (!cart) {

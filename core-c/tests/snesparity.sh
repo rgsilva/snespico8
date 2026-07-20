@@ -24,7 +24,7 @@ fail=0
 # strip p8main/parity.lua status lines, leaving only the cart's printh output
 strip_status() {
   grep '^OUT ' | sed 's/^OUT //' \
-    | grep -vE '^(boot|sram |state ok|chunk ok|init ok|frames |M3 PASS|RESULT )'
+    | grep -vE '^(boot|sram |state ok|chunk ok|init ok|frames |M3 PASS|RESULT |HASH )'
 }
 
 run_one() {
@@ -35,8 +35,10 @@ run_one() {
   # host reference (printh -> stderr)
   ./build/runp8 "$cart" -n 0 2>&1 >/dev/null | grep -v '^DONE' | eval "$post" > "$ref"
 
-  # build + run the SNES ROM with this cart embedded
-  make -C "$SNES" p8 CART="$cart" >/dev/null 2>&1
+  # build + run the SNES ROM with this cart embedded (no hashing needed;
+  # printh is captured before the flip loop)
+  rm -f "$SNES/build/p8obj/p8main.o"
+  make -C "$SNES" p8 CART="$cart" P8MAINDEF= >/dev/null 2>&1
   "$MESEN" --testrunner "$SNES/build/p8.sfc" "$SNES/test/parity.lua" 2>/dev/null \
     | strip_status | eval "$post" > "$got"
 
@@ -67,5 +69,39 @@ run_one dialect "$(pwd)/build/pdialect.p8" 'cat'
   printf 'print = printh\n'; cat tests/libvec.lua
 } > build/plib.p8
 run_one lib "$(pwd)/build/plib.p8" "sed 's/table: 0x[0-9a-f]*/table/'"
+
+# --- Track 2: framebuffer + machine-RAM hash parity ---
+# p8_hash_region (shared C, identical both sides) over low RAM [0,0x6000)
+# and screen [0x6000,0x8000), per flip. SNES runs are bounded by Mesen's
+# script time limit (the extra hashing is slow at -O0), so we compare the
+# common prefix and require at least MINF matching flips.
+MINF=3
+run_hash() {
+  name="$1"; cart="$2"; frames="$3"; input="$4"
+  ref="build/hash_${name}_host.txt"; got="build/hash_${name}_snes.txt"
+  iarg=""; [ -n "$input" ] && iarg="-i $input"
+  ./build/runp8 "$cart" -H -n "$frames" $iarg 2>/dev/null | grep '^HASH ' > "$ref"
+  rm -f "$SNES/build/p8obj/p8main.o"
+  make -C "$SNES" p8 CART="$cart" FRAMES="$frames" INPUT="$input" \
+    P8MAINDEF=-DP8_PARITY >/dev/null 2>&1
+  "$MESEN" --testrunner "$SNES/build/p8.sfc" "$SNES/test/parity.lua" 2>/dev/null \
+    | grep '^OUT HASH' | sed 's/^OUT //' > "$got"
+  n=$(wc -l < "$got" | tr -d ' ')
+  if [ "$n" -lt "$MINF" ]; then
+    echo "HASH FAIL ${name} (only ${n} flips before wall limit, need ${MINF})"; fail=1; return
+  fi
+  head -n "$n" "$ref" > "${ref}.trunc"
+  if diff "${ref}.trunc" "$got" >/dev/null 2>&1; then
+    echo "HASH PASS ${name} (${n} flips: FB+RAM bit-identical SNES==host)"
+  else
+    echo "HASH FAIL ${name}"; diff "${ref}.trunc" "$got" | head -12; fail=1
+  fi
+}
+
+for g in tests/carts/gfx_lines tests/carts/gfx_shapes tests/carts/gfx_spr \
+         tests/carts/gfx_map tests/carts/gfx_pal_fillp tests/carts/gfx_print; do
+  run_hash "$(basename "$g")" "$(pwd)/$g.p8" 4 ""
+done
+run_hash m4_input "$(pwd)/tests/carts/m4_input.p8" 8 "$(pwd)/tests/carts/m4_input.inp"
 
 exit $fail
