@@ -229,7 +229,7 @@ int main(void)
 {
   lua_State *L;
   unsigned long sram;
-  int frame;
+  long frame;                 /* long: cart_frames can exceed the 16-bit int range */
 
   mb_init();
   mb_puts("boot\n");

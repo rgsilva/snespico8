@@ -170,6 +170,18 @@ test-audio:
 	$(MESEN) --testrunner $(BUILD)/p8.sfc test/audio.lua
 	rm -f $(BUILD)/p8obj/p8main.o
 
+# A loadable audio-demo ROM: a real melody + bass that loops (the SPC plays
+# it in real time) with a slowly-updating screen. Build then open
+# build/p8.sfc in Mesen with sound ON -- this is meant to be heard, not run
+# headless. FRAMES is huge so the video keeps creeping for a long time; the
+# music loops forever regardless.
+.PHONY: demo
+demo:
+	rm -f $(BUILD)/p8obj/p8main.o
+	$(MAKE) p8 CART=../core-c/tests/carts/m6_demo.p8 FRAMES=60000
+	rm -f $(BUILD)/p8obj/p8main.o
+	@echo "==> Loadable demo at $(BUILD)/p8.sfc -- open in Mesen with sound on."
+
 # M5c: boot Celeste Classic on the SNES. The cart is CC-BY-NC-SA and not
 # committed; fetch it first (same as core-c/tests/celeste.sh):
 #   curl -sL -o ../core-c/tests/carts-external/celeste.p8 \

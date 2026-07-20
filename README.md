@@ -55,7 +55,9 @@ docs/     project brief, design notes
   RAM; the core's `sfx()`/`music()` just send "play" commands. 8 PICO-8
   waveforms as looped BRR, notes in tune to the DSP pitch register. A cart's
   `music(0)` drives the SPC end to end (`make -C snes test-audio`); the SPC
-  keeps playing after the game loop stops. Per-tick effects
+  keeps playing after the game loop stops. A loadable demo (a melody + bass
+  loop with a slow-updating screen) builds with `make -C snes demo` — open
+  `snes/build/p8.sfc` in Mesen with sound on. Per-tick effects
   (slide/vibrato/drop/fade/arp) are decoded but not yet applied — the
   remaining audio polish.
 - Next: M7 (carting/UX — .p8.png+pxa decoder, multi-cart menu, pause menu).
