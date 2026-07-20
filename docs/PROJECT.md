@@ -427,10 +427,15 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
 - [ ] M11: SA-1 tier — 4x clock + 256 KB linear heap
 - [ ] M12: **complete documentation pass** — bring docs/README/format notes
       fully current, a build/run guide, a per-milestone status map.
-- [ ] M13: **demo ROM** — a curated multi-cart build on the M8a menu: our own
-      homemade test carts (video / audio / joypad) plus any genuinely
-      free-licensed carts. NOT Celeste: it is CC-BY-NC-SA (BBS default) and
-      cannot ship in a public ROM; it stays a local test cart only.
+- [x] M13: **demo ROM** (`make -C snes demo-rom`, verify with `test-demo`) —
+      a curated multi-cart build on the M8a menu with our own carts (all ours,
+      freely shippable): `demo_video` (16-colour palette bars + an animated
+      ring of circles), `demo_input` (live joypad readout -- buttons light up
+      as held), and the `m6_demo` music demo. Verified in Mesen: the menu
+      lists all three and `demo_video` launches + renders the color bars.
+      NOT Celeste -- CC-BY-NC-SA (BBS default), kept a local test cart only.
+      Adding genuinely free-licensed (CC-0/MIT) community carts is optional
+      later, each license checked first.
 - [ ] M14: **CI release** — a pipeline that builds the free public release
       ROM automatically (mirrors snes86's `make release`).
 

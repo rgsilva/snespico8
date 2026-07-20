@@ -232,6 +232,24 @@ test-menu: $(BUILD)/cart_multi.h
 	$(MESEN) --testrunner $(BUILD)/p8.sfc test/menu.lua
 	rm -f $(BUILD)/p8obj/p8main.o
 
+# M13: the demo ROM -- the multi-cart menu curated with our own homemade
+# test carts (all ours, so freely shippable): a graphics test, a live
+# joypad readout, and the music demo. Open build/p8.sfc in Mesen with sound
+# on, pick with the pad. (Just `menu` with a curated MENUCARTS.)
+DEMOCARTS = ../core-c/tests/carts/demo_video.p8 ../core-c/tests/carts/demo_input.p8 ../core-c/tests/carts/m6_demo.p8
+.PHONY: demo-rom
+demo-rom:
+	$(MAKE) menu MENUCARTS="$(DEMOCARTS)"
+	@echo "==> Demo ROM at $(BUILD)/p8.sfc -- video / joypad / audio, pick with the pad."
+
+# Verify the demo ROM: the menu lists our carts and cart 0 (demo_video)
+# launches + renders. test/demorom.lua also prints SHOT <name> <hex> lines
+# (Mesen screenshots) you can pipe through xxd -r -p to eyeball.
+.PHONY: test-demo
+test-demo:
+	$(MAKE) demo-rom
+	$(MESEN) --testrunner $(BUILD)/p8.sfc test/demorom.lua
+
 # M5c: boot Celeste Classic on the SNES. The cart is CC-BY-NC-SA and not
 # committed; fetch it first (same as core-c/tests/celeste.sh):
 #   curl -sL -o ../core-c/tests/carts-external/celeste.p8 \
