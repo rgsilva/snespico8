@@ -16,6 +16,7 @@
 #include <string.h>
 #include "calypsi/mailbox.h"
 #include "p8heap.h"
+#include "p8spc.h"
 #include "p8.h"
 #include "lua/lua.h"
 #include "lua/lauxlib.h"
@@ -211,6 +212,19 @@ int main(void)
   mb_init();
   mb_puts("boot\n");
   video_init();
+
+#ifdef P8_SPC_TEST
+  /* M6a bring-up: IPL-upload the driver, key three voices, and hold so the
+   * Mesen harness can read the driver's voice mask at SPC $00 (proof the
+   * upload + $2140-$2143 transport + DSP path all work). */
+  p8spc_boot();
+  mb_puts("spc up\n");
+  p8spc_kon(69, 1, 0, 110);   /* A4  organ  voice 0 */
+  p8spc_kon(64, 1, 1, 110);   /* E4  organ  voice 1 */
+  p8spc_kon(72, 0, 2, 110);   /* C5  pluck  voice 2 */
+  mb_puts("kon x3\n");
+  for (;;) { }                /* SPC keeps ringing; harness samples + stops */
+#endif
 
   /* heap: WRAM slice + probed SRAM windows */
   p8heap_add_region(HEAP_WRAM_BASE, HEAP_WRAM_SIZE);

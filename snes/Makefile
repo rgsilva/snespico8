@@ -21,12 +21,13 @@ P8CFLAGS := --core=65816 --target=snes --code-model=large --data-model=large \
 LUAOBJS := lapi lauxlib lbaselib lcode lctype lcorolib ldebug ldo ldump \
            lfunc lgc llex lmem lobject lopcodes lparser lstate lstring \
            ltable ltm lundump lvm lzio lpico8lib
-COREOBJS := p8num p8 p8gfx
+COREOBJS := p8num p8 p8gfx p8audio
 P8LUA_O := $(addprefix $(BUILD)/p8obj/lua_,$(addsuffix .o,$(LUAOBJS)))
 P8CORE_O := $(addprefix $(BUILD)/p8obj/,$(addsuffix .o,$(COREOBJS)))
 
 PVBIN := ../../pvsneslib/devkitsnes/bin
 WLA := $(PVBIN)/wla-65816
+WLASPC := $(PVBIN)/wla-spc700
 WLALINK := $(PVBIN)/wlalink
 
 MESEN := /Applications/Mesen.app/Contents/MacOS/Mesen
@@ -87,11 +88,31 @@ $(BUILD)/p8obj/%.o: $(CORE)/%.c | $(BUILD)/p8obj
 # P8MAINDEF: parity builds pass -DP8_PARITY to enable per-flip RAM hashes.
 # The default (demo/boot) ROM omits them so it fits the script time limit.
 P8MAINDEF ?=
-$(BUILD)/p8obj/p8main.o: p8main.c $(BUILD)/cart_hello.h | $(BUILD)/p8obj
+$(BUILD)/p8obj/p8main.o: p8main.c p8spc.h $(BUILD)/cart_hello.h | $(BUILD)/p8obj
 	$(P8CC) -o $@ p8main.c $(P8CFLAGS) -I $(BUILD) $(P8MAINDEF)
 
 $(BUILD)/p8obj/p8heap.o: p8heap.c p8heap.h | $(BUILD)/p8obj
 	$(P8CC) -o $@ p8heap.c $(P8CFLAGS)
+
+# ---- SPC700 audio driver (M6) --------------------------------------
+# The driver is assembled with WLA-SPC700 into a 64KB RAM image; spc2c.py
+# extracts the .ORG $0200 region into a C blob (p8spc_blob.h) that the
+# Calypsi build embeds and apu_upload (p8spc.c) streams into the APU at
+# boot. Waveform BRR + pitch table come from tools/mkmiditab.py.
+$(BUILD)/p8spc_tables.asm: tools/mkmiditab.py | $(BUILD)
+	python3 tools/mkmiditab.py $@
+
+$(BUILD)/p8spc.o: p8spc.asm $(BUILD)/p8spc_tables.asm | $(BUILD)
+	$(WLASPC) -o $@ p8spc.asm
+
+$(BUILD)/p8spc64.bin: $(BUILD)/p8spc.o linkfile_p8spc
+	$(WLALINK) -d -s linkfile_p8spc $@
+
+$(BUILD)/p8spc_blob.h: $(BUILD)/p8spc64.bin tools/spc2c.py
+	python3 tools/spc2c.py $< $@
+
+$(BUILD)/p8obj/p8spc.o: p8spc.c p8spc.h $(BUILD)/p8spc_blob.h | $(BUILD)/p8obj
+	$(P8CC) -o $@ p8spc.c $(P8CFLAGS) -I $(BUILD)
 
 $(BUILD)/p8obj/stubs.o: stubs.c calypsi/mailbox.h | $(BUILD)/p8obj
 	$(P8CC) -o $@ stubs.c $(P8CFLAGS)
@@ -103,7 +124,8 @@ $(BUILD)/p8obj/header.o: calypsi/header.s | $(BUILD)/p8obj
 	$(P8AS) -o $@ $< --core=65816 --target=SNES --code-model=large --data-model=large
 
 $(BUILD)/p8.raw: $(P8LUA_O) $(P8CORE_O) $(BUILD)/p8obj/p8main.o \
-                 $(BUILD)/p8obj/p8heap.o $(BUILD)/p8obj/stubs.o \
+                 $(BUILD)/p8obj/p8heap.o $(BUILD)/p8obj/p8spc.o \
+                 $(BUILD)/p8obj/stubs.o \
                  $(BUILD)/p8obj/mailbox.o $(BUILD)/p8obj/header.o
 	$(P8LN) -o $@ calypsi/linker.scm --output-format=raw --rtattr exit=simplified \
 	  $(P8CALDIR)/lib/clib-lc-ld-snes-noppu.a --list-file=$(BUILD)/p8.map $^
@@ -113,6 +135,18 @@ $(BUILD)/p8.sfc: $(BUILD)/p8.raw tools/raw2sfc.py
 
 test-p8: $(BUILD)/p8.sfc
 	$(MESEN) --testrunner $(BUILD)/p8.sfc test/p8boot.lua
+
+# M6a: APU bring-up. Builds the ROM with the SPC bring-up path enabled
+# (uploads the driver, keys 3 voices, holds) and checks in Mesen that the
+# driver's voice mask at SPC $00 went non-zero — proof the whole
+# upload + $2140-$2143 transport + DSP path works. Force-rebuild p8main.o
+# so the -DP8_SPC_TEST define takes (P8MAINDEF isn't a file dep).
+.PHONY: test-spc
+test-spc:
+	rm -f $(BUILD)/p8obj/p8main.o
+	$(MAKE) p8 P8MAINDEF=-DP8_SPC_TEST
+	$(MESEN) --testrunner $(BUILD)/p8.sfc test/spc.lua
+	rm -f $(BUILD)/p8obj/p8main.o
 
 # M5c: boot Celeste Classic on the SNES. The cart is CC-BY-NC-SA and not
 # committed; fetch it first (same as core-c/tests/celeste.sh):
