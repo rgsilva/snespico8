@@ -202,6 +202,31 @@ static int has_global(lua_State *L, const char *name)
   return r;
 }
 
+/* --- optional p8heap measurement mode (M5): run the cart through the
+** SNES region allocator with a chosen window layout to measure whether a
+** real cart fits and the largest single allocation it needs. Each window
+** is a separate malloc so cross-window coalescing can't happen (faithful
+** to the SNES's non-contiguous SRAM windows). */
+extern void p8heap_add_region(void *base, unsigned long size);
+extern void *p8heap_lua_alloc(void *ud, void *ptr, size_t o, size_t n);
+extern unsigned long p8heap_free_bytes(void);
+extern unsigned long p8heap_peak_used, p8heap_max_ok, p8heap_max_fail, p8heap_nfail;
+
+static int measure_win_kb, measure_total_kb;
+
+static void build_measure_heap(void)
+{
+  /* One pool, windows separated by a guard gap so p8heap can't coalesce
+     across window boundaries (faithful to the SNES's non-contiguous SRAM
+     windows; plain per-window malloc gave adjacent blocks that merged). */
+  int nwin = measure_total_kb / measure_win_kb, i;
+  size_t win = (size_t)measure_win_kb * 1024, gap = 64;
+  char *pool = (char *)malloc((win + gap) * (size_t)nwin);
+  if (!pool) { fprintf(stderr, "measure: pool malloc failed\n"); return; }
+  for (i = 0; i < nwin; i++)
+    p8heap_add_region(pool + (size_t)i * (win + gap), (unsigned long)win);
+}
+
 int main(int argc, char **argv)
 {
   const char *cart = NULL, *inputs = NULL, *ppm = NULL;
@@ -215,16 +240,26 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[i], "-i") && i + 1 < argc) inputs = argv[++i];
     else if (!strcmp(argv[i], "-p") && i + 1 < argc) ppm = argv[++i];
     else if (!strcmp(argv[i], "-H")) hash_mode = 1;
+    else if (!strcmp(argv[i], "-M") && i + 2 < argc) {
+      measure_win_kb = atoi(argv[++i]);
+      measure_total_kb = atoi(argv[++i]);
+    }
     else cart = argv[i];
   }
   if (!cart) {
-    fprintf(stderr, "usage: runp8 cart.p8 [-n frames] [-i inputs.txt] [-p out.ppm]\n");
+    fprintf(stderr, "usage: runp8 cart.p8 [-n frames] [-i inputs.txt] [-p out.ppm]"
+                    " [-M windowKB totalKB]\n");
     return 1;
   }
 
   p8_reset();
   src = load_cart(cart);
 
+  if (measure_win_kb) {
+    build_measure_heap();
+    L = lua_newstate(p8heap_lua_alloc, NULL);
+    if (!L) { fprintf(stderr, "measure: newstate OOM\n"); return 4; }
+  } else
   L = luaL_newstate();
   luaL_requiref(L, "_G", luaopen_base, 1);
   lua_pop(L, 1);
@@ -285,6 +320,13 @@ int main(int argc, char **argv)
     unsigned f = (unsigned)p8_frame_count();
     printf("DONE frames=%u vmops=%lu ops/frame=%lu\n", f, p8_vmops,
            f ? p8_vmops / f : 0);
+  }
+  if (measure_win_kb) {
+    /* report BEFORE lua_close so peak reflects live state */
+    printf("HEAP win=%dKB total=%dKB peak_used=%lu free=%lu"
+           " max_alloc=%lu max_fail=%lu nfail=%lu\n",
+           measure_win_kb, measure_total_kb, p8heap_peak_used,
+           p8heap_free_bytes(), p8heap_max_ok, p8heap_max_fail, p8heap_nfail);
   }
   free(src);
   lua_close(L);

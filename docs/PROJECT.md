@@ -304,8 +304,27 @@ tail (phased), byte-exact `^` vs real PICO-8 (matches our oracle instead).
         call arg is clobbered by a spill reload at -O0; broke
         tonum(true)); and a latent **sintable OOB** read at index 4096
         (z8lua's own bug, tolerated on the host, exposed on SNES).
-- [ ] M5: heap tier — SRAM allocator (32 KB windows), GC tuning, stat(0),
-      OOM story; Celeste playable-in-slow-motion (milestone photo)
+- [ ] M5: heap tier — SRAM allocator, GC tuning, stat(0), OOM story;
+      real cart on hardware (Celeste in slow motion)
+  - [x] M5a: **heap sizing measured → HiROM 8 KB windows suffice for
+        Celeste** (no LoROM rework). `runp8 -M <winKB> <totalKB>` runs a
+        cart through the p8heap region allocator with a chosen window
+        layout (windows gap-separated so coalescing can't cross them),
+        reporting peak/largest-alloc/largest-FAILED-alloc. Celeste (host,
+        60 frames): peak **~201 KB**, and exactly one allocation >8 KB —
+        a 256-node table hash at **10,240 B on the host**. But that's
+        pointer-inflated: Calypsi struct sizes are TValue 8 B (host 16),
+        **Node 20 B (host 40)**, ptr 4 B (host 8), so on the SNES that
+        hash is **256×20 = 5,120 B — it fits an 8 KB window**, and every
+        other alloc was already ≤5 KB. SNES peak projects to ~110-130 KB
+        (< the 256 KB HiROM heap), and host peak is stable 30→60 frames
+        (GC bounds it, no leak). Also fixed a real p8heap bug the host
+        measurement exposed: the block-size header was `unsigned long`
+        (8 B on a 64-bit host, silently corrupting; accidentally correct
+        on the SNES where long is 4 B) → now `uint32_t`.
+  - [ ] M5b: stat(0) memory reporting + graceful OOM
+  - [ ] M5c: boot Celeste (or the largest cart that boots in Mesen's
+        time budget) on the SNES; GC tuning for -O0; milestone photo
 - [ ] M6: audio — SPC driver + sequencer, real-time; event-trace parity
 - [ ] M7: carting/UX — .p8.png+pxa decoder, multi-cart menu ROM,
       pause/menuitem, btnp repeat
