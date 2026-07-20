@@ -77,7 +77,7 @@ PLAYCART ?= ../core-c/tests/carts/m7_input.p8
 # MENUCARTS = the carts the multi-cart menu/test-menu targets bundle.
 MENUCARTS ?= ../core-c/tests/carts/m7_input.p8 ../core-c/tests/carts/m6_demo.p8 ../core-c/tests/carts/m6_fx.p8 ../core-c/tests/carts/m3_boot.p8
 .PHONY: FORCE
-$(BUILD)/cart_hello.h: $(CART) tools/cart2c.py FORCE | $(BUILD)
+$(BUILD)/cart_hello.h: $(CART) tools/cart2c.py tools/p8png.py FORCE | $(BUILD)
 	python3 tools/cart2c.py $(CART) $@ $(FRAMES) $(INPUT)
 
 $(BUILD)/p8obj:
@@ -139,6 +139,14 @@ $(BUILD)/p8.sfc: $(BUILD)/p8.raw tools/raw2sfc.py
 
 test-p8: $(BUILD)/p8.sfc
 	$(MESEN) --testrunner $(BUILD)/p8.sfc test/p8boot.lua
+
+# M8b: .p8.png loader. Builds a ROM straight from a real PICO-8 PNG export
+# (cart2c decodes stego + pxa at build time -- nothing on the SNES) and
+# checks demo_video's palette bars render, proving the whole PNG->ROM path.
+.PHONY: test-png
+test-png:
+	$(MAKE) p8 CART=../core-c/tests/carts/demo_video.p8.png FRAMES=8
+	$(MESEN) --testrunner $(BUILD)/p8.sfc test/png.lua
 
 # M6a: APU bring-up. Builds the ROM with the SPC bring-up path enabled
 # (uploads the driver, keys 3 voices, holds) and checks in Mesen that the
@@ -216,7 +224,7 @@ play:
 # M8: bundle several carts into build/cart_multi.h and build the menu ROM
 # (-DP8_MULTICART). p8main.c then boots a d-pad picker instead of one cart;
 # each pick runs in a fresh lua_State, Select returns to the list.
-$(BUILD)/cart_multi.h: tools/multicart2c.py tools/cart2c.py FORCE | $(BUILD)
+$(BUILD)/cart_multi.h: tools/multicart2c.py tools/cart2c.py tools/p8png.py FORCE | $(BUILD)
 	python3 tools/multicart2c.py $@ $(MENUCARTS)
 
 .PHONY: menu test-menu

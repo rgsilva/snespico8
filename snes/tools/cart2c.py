@@ -50,13 +50,13 @@ def music_bytes(t):
     return ch
 
 
-def main(src, out, frames=8, inputfile=None):
-    inputs = []
-    if inputfile:
-        for ln in open(inputfile):
-            ln = ln.strip()
-            if ln:
-                inputs.append(int(ln, 16) & 0xFFFF)
+def parse_cart(src):
+    """.p8 text OR .p8.png -> (lua_bytes, gfx, map, gff, sfx, music). The png
+    path decodes stego + pxa via p8png (a PC build-time step; nothing on the
+    SNES); both formats yield the same section data. Shared by multicart2c."""
+    if src.endswith(".png"):
+        import p8png
+        return p8png.parse_p8png(src)
     lua = []
     gfx, gmap, gff, sfx, music = [], [], [], [], []
     sec = None
@@ -86,9 +86,19 @@ def main(src, out, frames=8, inputfile=None):
             b = music_bytes(t)
             if b:
                 music.extend(b)
+    return "".join(lua).encode("utf-8"), gfx, gmap, gff, sfx, music
+
+
+def main(src, out, frames=8, inputfile=None):
+    inputs = []
+    if inputfile:
+        for ln in open(inputfile):
+            ln = ln.strip()
+            if ln:
+                inputs.append(int(ln, 16) & 0xFFFF)
+    src_bytes, gfx, gmap, gff, sfx, music = parse_cart(src)
 
     import io
-    src_bytes = "".join(lua).encode("utf-8")
     buf = io.StringIO()
     f = buf
     if True:
