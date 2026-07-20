@@ -6,8 +6,6 @@ runtime + PICO-8 API in portable C, compiled for the 65816 with Calypsi,
 Mode 7 as a chunky 128x128 framebuffer, SPC700 playing the music in real
 time while the game runs in slow motion.
 
-See `docs/PROJECT.md` for the full brief, constraints and milestones.
-
 ## Layout
 
 ```
@@ -16,8 +14,33 @@ core-c/   PC reference core (z8lua + PICO-8 API) — same C source the
 snes/     65816/WLA-DX glue, Mode 7 video, SPC driver, Mesen2 test harness
 carts/    .p8 test carts (micro-cart vector suite; BBS carts gitignored)
 tools/    third-party toolchains/checkouts (gitignored): Calypsi, z8lua ref
-docs/     project brief, design notes
+docs/     project brief, build guide, format + design notes
 ```
+
+## Documentation
+
+- [`docs/PROJECT.md`](docs/PROJECT.md) — full brief, constraints, milestone log.
+- [`docs/BUILDING.md`](docs/BUILDING.md) — prerequisites and every make target.
+- [`docs/cart-formats.md`](docs/cart-formats.md) — `.p8` and `.p8.png` (stego + pxa).
+- [`docs/audio-format.md`](docs/audio-format.md) — SFX/music memory format + timing.
+
+## Milestones
+
+| # | milestone | status |
+|---|-----------|--------|
+| M0 | kill-or-commit spikes | ✅ |
+| M1–M2 | PC reference core (fix32, full API, Celeste on host) | ✅ |
+| M3–M4 | core on the SNES, **bit-identical** to host | ✅ |
+| M5 | heap tier — Celeste boots on the SNES (slow) | ✅ |
+| M6 | real-time SPC audio + all note effects | ✅ |
+| M7 | live controller input | ✅ |
+| M8 | carting/UX — menu ✅, `.p8.png` ✅, pause menu ⬜ | 🔶 |
+| M9 | perf passes | ⬜ |
+| M10 | real hardware | ⬜ |
+| M11 | SA-1 tier | ⬜ |
+| M12 | documentation pass | 🔶 |
+| M13 | demo ROM | ✅ |
+| M14 | CI + local release | ✅ |
 
 ## Status
 
@@ -77,9 +100,9 @@ docs/     project brief, design notes
   ours, freely shippable; `make -C snes test-demo` verifies it).
 - **Release + CI**: `make -C snes release` → `snespico8.sfc`, the free public
   ROM (runtime + our own carts). GitHub CI (`.github/workflows/build.yml`)
-  runs the host suites (`make -C core-c check`) on every push and opens a
+  runs the host suites (`make -C core-c check-ci`) on every push and opens a
   release on a `v*` tag; the locally-built ROM is attached by hand (Calypsi
   can't run in a public CI). Host CI is strong coverage — the SNES build is
   bit-identical to it (M4).
-- Next: finish M8 (pause menu + btnp repeat), then a docs pass (M12); M9
-  (perf) after that.
+- Next: finish M8 (pause menu + btnp repeat); then M9 (perf) — the swing
+  toward playable.
