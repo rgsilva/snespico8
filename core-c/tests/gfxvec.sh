@@ -9,7 +9,8 @@ fail=0
 for cart in tests/carts/gfx_*.p8; do
   name=$(basename "$cart" .p8)
   out="build/${name}.out"
-  ./build/runp8 "$cart" -n 2 -p "build/${name}.ppm" 2>"build/${name}.err" | grep FLIP > "$out"
+  ./build/runp8 "$cart" -n 2 -p "build/${name}.ppm" 2>"build/${name}.err" \
+    | grep FLIP | sed 's/ ops=[0-9]*//' > "$out"
   cat "build/${name}.err" >> "$out"
   if [ "$mode" = record ]; then
     cp "$out" "tests/goldens/${name}.txt"

@@ -41,7 +41,13 @@
 #define P8_DS_CAM_Y   0x5f2au  /* int16 LE */
 #define P8_HW_RNDLO   0x5f44u  /* PRNG state, 2x u32 LE (lo, hi) */
 
+#ifdef __CALYPSI__
+/* the PICO-8 machine RAM is WRAM bank $7F, mapped 1:1 (large data
+** model: plain pointers are 24-bit) */
+#define p8_ram ((uint8_t *)0x7f0000ul)
+#else
 extern uint8_t p8_ram[P8_RAM_SIZE];
+#endif
 
 /* runner hooks */
 typedef void (*p8_flip_fn)(void *ud);

@@ -10,7 +10,7 @@ if [ ! -f "$CART" ]; then
   echo "CELESTE SKIP (cart not fetched)"
   exit 0
 fi
-./build/runp8 "$CART" -n 60 2>/dev/null | tail -20 > build/celeste.out
+./build/runp8 "$CART" -n 60 2>/dev/null | sed 's/ ops=[0-9]*//;s/ vmops=[0-9]* ops\/frame=[0-9]*//' | tail -20 > build/celeste.out
 if [ "$1" = record ]; then
   cp build/celeste.out tests/goldens/celeste.txt
   echo "recorded celeste"

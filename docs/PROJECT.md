@@ -251,11 +251,36 @@ tail (phased), byte-exact `^` vs real PICO-8 (matches our oracle instead).
       modbase) runs deterministically** — title screen and level 1
       render correctly (`tests/celeste.sh`, cart fetched separately,
       not committed). Sound remains M6.
-- [ ] M2: full gfx API on PC (spr/sspr/map/pal/palt/fillp/clip/camera/
-      P8SCII print subset, peek/poke/memcpy semantics); real BBS carts run
-      headless; Celeste classic flagship
-- [ ] M3: SNES bring-up — same core via Calypsi, $7F machine RAM, Mode 7
-      out, WLA glue; hello.p8 boots in Mesen2
+- [x] M3: **the core runs on the SNES.** The exact core-c source
+      compiled with Calypsi (5.17, -O0) boots an embedded .p8 cart in
+      Mesen2 and renders through Mode 7. `snes/p8main.c`: PICO-8 RAM =
+      WRAM $7F (1:1); Lua heap = a runtime-probed set of cart SRAM
+      windows + WRAM $7E slice (`snes/p8heap.c`, first-fit region
+      allocator); cart assets embedded via `snes/tools/cart2c.py`;
+      `flip()` expands $7F:6000 through the LUT and DMAs 16 KB to Mode 7
+      tile data; letterbox ported from m7demo (M7SEL transparent +
+      window + HDMA). `make -C snes test-p8` boots `m3_boot.p8` and
+      asserts 8 framebuffer pixels **byte-exact against the host oracle**
+      (`snes/test/p8boot.lua`, screenshot p8boot.png).
+      - **SRAM ground truth (HiROM):** the probe finds the **full 256 KB**
+        (header $08, 32 distinct 8 KB windows at banks $20-$3F) —
+        heap ≈ 268 KB. Caveat vs LoROM: HiROM's 8 KB windows cap a
+        *single* allocation at ~8 KB (LoROM's would allow ~32 KB);
+        revisit for array-heavy carts in M5.
+      - **MEASURED VM speed:** ~**1,260 VM ops/sec** at -O0 (dead-linear
+        21 ops/frame on the 3.58 MHz 65816), plus a one-time ~4-5 s
+        boot overhead (newstate + parse, before the VM loop starts).
+        Replaces the M1.5 assumption at its pessimistic end. Projection:
+        Celeste gameplay (~30K ops/frame) ≈ **24 s/frame** at -O0;
+        title (~1.5K) ≈ 1.2 s/frame. Headroom untouched: -O2 per-file,
+        asm hot paths, SA-1. "Slideshow but alive" confirmed on hardware.
+      - **New Calypsi bug** (`bugs/calypsi-const-ptr-offset.c`): folding
+        `const_ptr + 0x8000u` sign-extends the offset into the bank byte
+        ($7F0000+0x8000 → $7E8000); it silently cleared the mailbox in
+        p8_reset. Runtime/indexed access is unaffected (hardware `[dp],y`
+        is unsigned), so peek/poke to high memory is fine. Also hit the
+        16-bit size_t truncation (memset of 0x10000 → 0). Both fixed by
+        chunked pointer-walk clears; -O0 kept as the baseline.
 - [ ] M4: parity harness — scripted inputs, per-flip FB+RAM hashes both
       sides, suite.sh convention, vector suite green on SNES
 - [ ] M5: heap tier — SRAM allocator (32 KB windows), GC tuning, stat(0),

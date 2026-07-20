@@ -22,9 +22,9 @@
               .section snesheader, root
               .ascii  "SNESPICO8 M0         "   ; 21-byte title
               .byte   0x21           ; map mode: HiROM, slow (2.68 MHz)
-              .byte   0x00           ; cartridge type: ROM only
+              .byte   0x02           ; cartridge type: ROM+RAM+battery
               .byte   0x09           ; ROM size: 512 KB
-              .byte   0x00           ; RAM size: none
+              .byte   0x08           ; RAM size: 256KB requested (Mesen backs it)
               .byte   0x01           ; country: USA (NTSC)
               .byte   0x33           ; licensee: extended header present
               .byte   0x00           ; version

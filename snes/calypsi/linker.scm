@@ -19,7 +19,7 @@
     ;; (fixed addresses in port/main.c, no linker object — far objects must
     ;; not cross the bank boundary)
     (memory HiRAM
-            (address (#x7e2000 . #x7effff))
+            (address (#x7e2000 . #x7e7fff)) ; $7E:8000+ = M7 buffer/heap/mailbox (fixed addrs)
             (type RAM)
             (qualifier far)
             (section heap zfar far huge))

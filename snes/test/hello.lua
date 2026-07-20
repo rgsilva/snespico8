@@ -1,9 +1,9 @@
--- M0a harness: polls the WRAM mailbox ($7FE000, see calypsi/mailbox.h),
+-- M0a harness: polls the WRAM mailbox ($7EF000, see calypsi/mailbox.h),
 -- drains the stdout ring to Mesen's stdout via print() (no io access
 -- needed), and exits with the ROM's status word. emu8086-style stdout
 -- protocol: "OUT <line>" per mailbox line, one final "RESULT PASS/FAIL".
-local MB_MAGIC, MB_STATUS, MB_WINDEX, MB_RING = 0x1E000, 0x1E002, 0x1E004, 0x1E010
-local RING_SIZE = 7664
+local MB_MAGIC, MB_STATUS, MB_WINDEX, MB_RING = 0xF000, 0xF002, 0xF004, 0xF010
+local RING_SIZE = 3552
 
 local frames = 0
 local sawMagic = false
