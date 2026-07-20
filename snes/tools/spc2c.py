@@ -8,7 +8,7 @@ driver inside the Calypsi build with no extra link step.
 """
 import sys
 
-ADDR, ENTRY, LEN = 0x0200, 0x0220, 1024   # 8-entry sample dir -> entry $0220
+ADDR, ENTRY, LEN = 0x0200, 0x0220, 2048   # 8-entry sample dir -> entry $0220
 
 data = open(sys.argv[1], "rb").read()
 blob = data[ADDR:ADDR + LEN]
