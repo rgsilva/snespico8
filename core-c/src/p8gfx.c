@@ -686,7 +686,18 @@ static int api_dset(lua_State *L)
 
 static int api_stat(lua_State *L)
 {
-  (void)p8a_optint(L, 1, 0); /* VERIFY: everything reports 0 for now */
+  int n = p8a_optint(L, 1, 0);
+  if (n == 0) {
+    /* Lua memory used, in KB. This is a truthful number for a cart doing
+       memory-pressure checks — but it is intentionally NOT host<->SNES
+       parity-identical (the SNES uses smaller structs: TValue 8B vs 16,
+       Node 20B vs 40), like the raw PRNG state at 0x5f44. We OOM near
+       ~256 KB rather than PICO-8's 2048. */
+    lua_pushnumber(L, (lua_Number)p8fix_fromint(lua_gc(L, LUA_GCCOUNT, 0)));
+    return 1;
+  }
+  /* VERIFY: stat(1)/(2) CPU load and stat(4..) clipboard/gpio/date/etc.
+     unimplemented — 0 (so carts that throttle on stat(1) don't degrade). */
   lua_pushnumber(L, 0);
   return 1;
 }
