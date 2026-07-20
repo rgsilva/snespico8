@@ -84,14 +84,17 @@ make -C snes release                    # M14 -> build/snespico8.sfc (the public
 
 ## Release (M14)
 
-CI (`.github/workflows/build.yml`) runs the host `check` on every push and
-opens a GitHub release on a `v*` tag. The flashable ROM is built locally,
-because Calypsi can't run in a public runner:
+CI (`.github/workflows/build.yml`) does it end to end. On every push it runs
+the host suites (`make -C core-c check-ci`) **and** builds the flashable ROM —
+it installs Calypsi from the author's official release and builds WLA-DX from
+source. On a `v*` tag it publishes a GitHub release with `snespico8.sfc`
+attached, so cutting a release is just:
 
 ```sh
-make -C snes release                    # -> snes/build/snespico8.sfc
-# then attach it to the release, e.g.:  gh release upload vX.Y snes/build/snespico8.sfc
+git tag v0.1 && git push --tags
 ```
 
-The release ROM ships only our own carts (no Lexaloffle/BBS assets), so it is
+The CI ROM is **byte-identical** to a local `make -C snes release` (the
+cross-compile is deterministic), which you can still run to build/test the ROM
+yourself. It ships only our own carts (no Lexaloffle/BBS assets), so it is
 freely redistributable.

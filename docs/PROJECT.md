@@ -462,17 +462,20 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
       NOT Celeste -- CC-BY-NC-SA (BBS default), kept a local test cart only.
       Adding genuinely free-licensed (CC-0/MIT) community carts is optional
       later, each license checked first.
-- [x] M14: **CI + release** (`.github/workflows/build.yml`, `make -C snes
-      release`). CI can't build the SNES ROM: Calypsi is licensed for personal
-      use only and may not be redistributed into a public runner (unlike
-      snes86, which is open-source WLA-DX). So CI runs the HOST side -- it
-      builds the z8lua oracle + the portable core and runs the numeric /
-      dialect / lib / gfx / audio suites (`make -C core-c check`); green is
-      strong coverage since M4 proved the SNES build is bit-identical to host.
-      On a `v*` tag it opens a GitHub release with auto notes. The flashable
-      ROM is built locally -- `make -C snes release` -> `snespico8.sfc` (our
-      runtime + our own demo carts, zero BBS assets, freely redistributable)
-      -- and attached to the release by hand.
+- [x] M14: **CI + release** (`.github/workflows/build.yml`), two jobs:
+      **host-tests** builds the z8lua oracle + the portable core and runs the
+      numeric/dialect/gfx/audio suites (`make -C core-c check-ci`; green is
+      strong coverage since M4 proved the SNES build is bit-identical to
+      host). **rom-build** installs the Calypsi toolchain from the author's
+      official release -- Calypsi is free for personal/hobby use and we do not
+      redistribute it, the runner just fetches it like any developer -- and
+      builds WLA-DX from source, then builds the flashable ROM (`make -C snes
+      release` -> `snespico8.sfc`). So CI also catches SNES-build breaks, and
+      on a `v*` tag it publishes a GitHub release with the ROM attached. The
+      CI ROM is **byte-identical** to a local `make -C snes release` (the
+      cross-compile is deterministic across macOS/Linux). The ROM ships only
+      our own carts (zero Lexaloffle/BBS assets), so it is freely
+      redistributable. Only the Mesen on-hardware tests stay local.
 
 ## Style / working preferences
 

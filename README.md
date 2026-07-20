@@ -40,7 +40,7 @@ docs/     project brief, build guide, format + design notes
 | M11 | SA-1 tier | ⬜ |
 | M12 | documentation pass | 🔶 |
 | M13 | demo ROM | ✅ |
-| M14 | CI + local release | ✅ |
+| M14 | CI (host suites + builds the ROM) + release | ✅ |
 
 ## Status
 
@@ -98,10 +98,9 @@ docs/     project brief, build guide, format + design notes
 - **Demo ROM** (`make -C snes demo-rom`): the menu curated with our own test
   carts — a graphics test, a live joypad readout, and the music demo (all
   ours, freely shippable; `make -C snes test-demo` verifies it).
-- **Release + CI**: `make -C snes release` → `snespico8.sfc`, the free public
-  ROM (runtime + our own carts). GitHub CI (`.github/workflows/build.yml`)
-  runs the host suites (`make -C core-c check-ci`) on every push and opens a
-  release on a `v*` tag; the locally-built ROM is attached by hand (Calypsi
-  can't run in a public CI). Host CI is strong coverage — the SNES build is
-  bit-identical to it (M4).
+- **Release + CI**: GitHub CI (`.github/workflows/build.yml`) builds it all —
+  the host suites (`make -C core-c check-ci`) *and* the flashable ROM (it
+  installs Calypsi from its official release + builds WLA-DX). A `v*` tag
+  publishes a release with `snespico8.sfc` attached; the CI ROM is
+  byte-identical to a local `make -C snes release`.
 - Next: M9 (perf) — the swing toward playable (asm hot paths, fps corpus).
