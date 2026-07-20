@@ -666,6 +666,121 @@ void p8_input_frame(void)
     }
 }
 
+/* ---- pause-menu registry + menuitem() (M8) ----
+** menuitem() registers labels + Lua callbacks; the SNES pause overlay
+** (snes/p8main.c) reads them and invokes a callback on selection. */
+
+#define P8_MENU_MAX 5
+static char p8_menu_txt[P8_MENU_MAX][20];  /* label text, NUL-terminated */
+static int  p8_menu_ref[P8_MENU_MAX];      /* Lua callback ref, or LUA_NOREF */
+static uint8_t p8_menu_on[P8_MENU_MAX];    /* slot active? */
+
+/* clear the registry for a fresh lua_State (no unref -- the previous state,
+** if any, is already closed). Called from p8gfx_open so each cart starts
+** clean. */
+void p8_menu_reset(void)
+{
+  int i;
+  for (i = 0; i < P8_MENU_MAX; i++) {
+    p8_menu_txt[i][0] = 0;
+    p8_menu_ref[i] = LUA_NOREF;
+    p8_menu_on[i] = 0;
+  }
+}
+
+/* menuitem(index 1..5, [label], [callback]) -- register/replace/remove an
+** entry. menuitem(i) with no label removes slot i. */
+static int api_menuitem(lua_State *L)
+{
+  int idx = p8a_int(L, 1);
+  int s;
+  if (idx < 1 || idx > P8_MENU_MAX)
+    return 0;
+  s = idx - 1;
+  if (p8_menu_ref[s] != LUA_NOREF) {
+    luaL_unref(L, LUA_REGISTRYINDEX, p8_menu_ref[s]);
+    p8_menu_ref[s] = LUA_NOREF;
+  }
+  if (lua_isnoneornil(L, 2)) {          /* remove */
+    p8_menu_on[s] = 0;
+    return 0;
+  }
+  {
+    const char *lbl = lua_tostring(L, 2);
+    size_t k = 0;
+    if (lbl)
+      for (; lbl[k] && k < sizeof(p8_menu_txt[0]) - 1; k++)
+        p8_menu_txt[s][k] = lbl[k];
+    p8_menu_txt[s][k] = 0;
+  }
+  if (lua_isfunction(L, 3)) {
+    lua_pushvalue(L, 3);
+    p8_menu_ref[s] = luaL_ref(L, LUA_REGISTRYINDEX);
+  }
+  p8_menu_on[s] = 1;
+  return 0;
+}
+
+int p8_menu_count(void)
+{
+  int i, n = 0;
+  for (i = 0; i < P8_MENU_MAX; i++)
+    if (p8_menu_on[i])
+      n++;
+  return n;
+}
+
+/* label of the k-th active item (0-based over active items), or NULL */
+const char *p8_menu_label(int k)
+{
+  int i;
+  for (i = 0; i < P8_MENU_MAX; i++)
+    if (p8_menu_on[i]) {
+      if (k == 0)
+        return p8_menu_txt[i];
+      k--;
+    }
+  return 0;
+}
+
+/* invoke the k-th active item's callback; returns 1 if the menu should stay
+** open (callback returned truthy), 0 to close. */
+int p8_menu_invoke(lua_State *L, int k)
+{
+  int i, slot = -1;
+  for (i = 0; i < P8_MENU_MAX; i++)
+    if (p8_menu_on[i]) {
+      if (k == 0) { slot = i; break; }
+      k--;
+    }
+  if (slot < 0 || p8_menu_ref[slot] == LUA_NOREF)
+    return 0;
+  lua_rawgeti(L, LUA_REGISTRYINDEX, p8_menu_ref[slot]);
+  lua_pushnumber(L, 0);                 /* PICO-8 passes a button bitmask; 0 */
+  if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
+    lua_pop(L, 1);
+    return 0;
+  }
+  {
+    int stay = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    return stay;
+  }
+}
+
+/* C-callable filled rect for the pause overlay (raw color, screen-clipped) */
+void p8_fillrect(int x0, int y0, int x1, int y1, unsigned char col)
+{
+  int x, y;
+  for (y = y0; y <= y1; y++) {
+    if ((unsigned)y >= 128u)
+      continue;
+    for (x = x0; x <= x1; x++)
+      if ((unsigned)x < 128u)
+        p8i_screen_set(x, y, (uint8_t)(col & 0x0F));
+  }
+}
+
 /* ---- stubs (sound lands in M6; the rest as needed) ---- */
 
 static int stub_nop(lua_State *L)
@@ -757,7 +872,7 @@ static const luaL_Reg gfx_funcs[] = {
   { "cursor", api_cursor },
   { "print", api_print },
   { "btnp", api_btnp },
-  { "menuitem", stub_nop },
+  { "menuitem", api_menuitem },
   { "cstore", stub_nop },
   { "reload", stub_nop },
   { "extcmd", stub_nop },
@@ -771,6 +886,7 @@ static const luaL_Reg gfx_funcs[] = {
 void p8gfx_open(lua_State *L)
 {
   const luaL_Reg *r;
+  p8_menu_reset();   /* fresh pause-menu registry per lua_State */
   for (r = gfx_funcs; r->name; r++)
     lua_register(L, r->name, r->func);
 }

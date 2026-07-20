@@ -55,6 +55,14 @@ void p8_set_flip(p8_flip_fn fn, void *ud);
 void p8_set_buttons(uint16_t p0, uint16_t p1); /* bit i = button i held */
 void p8_input_frame(void);      /* advance btnp held counters, once per frame */
 void p8_text(int x, int y, unsigned char col, const char *s); /* C menu text */
+void p8_fillrect(int x0, int y0, int x1, int y1, unsigned char col); /* C fill */
+
+/* pause menu (menuitem): registry in p8gfx.c, driven by the SNES overlay */
+void p8_menu_reset(void);
+int p8_menu_count(void);
+const char *p8_menu_label(int k);       /* k-th active item's label, or NULL */
+struct lua_State;
+int p8_menu_invoke(struct lua_State *L, int k); /* run cb; 1 = keep menu open */
 
 /* audio command seam (p8audio.c): the core invokes this on every sfx()/
 ** music() call. The host runner prints it (parity trace); the SNES build

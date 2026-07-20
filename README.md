@@ -34,7 +34,7 @@ docs/     project brief, build guide, format + design notes
 | M5 | heap tier — Celeste boots on the SNES (slow) | ✅ |
 | M6 | real-time SPC audio + all note effects | ✅ |
 | M7 | live controller input | ✅ |
-| M8 | carting/UX — menu ✅, `.p8.png` ✅, pause menu ⬜ | 🔶 |
+| M8 | carting/UX — menu, `.p8.png`, pause menu + `menuitem()` | ✅ |
 | M9 | perf passes | ⬜ |
 | M10 | real hardware | ⬜ |
 | M11 | SA-1 tier | ⬜ |
@@ -89,12 +89,12 @@ docs/     project brief, build guide, format + design notes
   `btn()`/`btnp()` each frame (d-pad → dirs, O = B/Y, X = A/X) — the first
   interactive build. Baked input traces still drive the parity tests, so M4
   stays pixel-exact. No virtual keyboard: PICO-8 is a joypad machine.
-- **M8 in progress**: **multi-cart menu ROM** (`make -C snes menu`) — bundle
-  carts into one ROM, pick with the d-pad, each runs in a fresh `lua_State`,
-  Select returns — plus a **`.p8.png` loader** (`make -C snes test-png`):
-  real PICO-8 PNG carts decode at build time (stego + hand-rolled pxa), so
-  `.p8.png` works anywhere `.p8` does and the SNES never sees a PNG. Pause
-  menu + btnp repeat still to come.
+- **M8 done — carting/UX**: a **multi-cart menu ROM** (`make -C snes menu`)
+  bundling carts, each run in a fresh `lua_State` (Select returns); a
+  **`.p8.png` loader** (`make -C snes test-png`) that decodes real PICO-8 PNG
+  carts at build time (stego + hand-rolled pxa), so `.p8.png` works anywhere
+  `.p8` does; and a **Start pause menu** with `menuitem()` callbacks
+  (`make -C snes test-pause`). btnp repeat rides M7's live input.
 - **Demo ROM** (`make -C snes demo-rom`): the menu curated with our own test
   carts — a graphics test, a live joypad readout, and the music demo (all
   ours, freely shippable; `make -C snes test-demo` verifies it).
@@ -104,5 +104,4 @@ docs/     project brief, build guide, format + design notes
   release on a `v*` tag; the locally-built ROM is attached by hand (Calypsi
   can't run in a public CI). Host CI is strong coverage — the SNES build is
   bit-identical to it (M4).
-- Next: finish M8 (pause menu + btnp repeat); then M9 (perf) — the swing
-  toward playable.
+- Next: M9 (perf) — the swing toward playable (asm hot paths, fps corpus).
