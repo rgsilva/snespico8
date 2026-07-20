@@ -7,6 +7,9 @@
 ** usage: runp8 cart.p8 [-n frames] [-i inputs.txt] [-p out.ppm]
 **   inputs.txt: one hex byte per line = player-0 button mask per frame
 */
+/* strdup() is POSIX, which gcc hides under strict -std=c99 (clang exposes it);
+** runp8 is host-only, never Calypsi-compiled, so a POSIX feature macro is fine */
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
