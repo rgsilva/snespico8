@@ -74,6 +74,7 @@ void p8_reset(void)
   p8_ram[P8_DS_CLIP_Y1] = 128;
   p8_ram[P8_DS_PEN] = 6;
   rnd_seed(0);
+  p8_audio_reset();
   frames = 0;
 }
 
@@ -626,4 +627,5 @@ void p8_open(lua_State *L)
   for (r = p8_funcs; r->name; r++)
     lua_register(L, r->name, r->func);
   p8gfx_open(L);
+  p8audio_open(L);
 }

@@ -27,6 +27,9 @@ $(BUILD)/p8gfx.o: src/p8gfx.c src/p8.h src/p8int.h src/p8font.h | $(BUILD)
 $(BUILD)/p8.o: src/p8.c src/p8.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+$(BUILD)/p8audio.o: src/p8audio.c src/p8.h src/p8int.h | $(BUILD)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 $(BUILD)/runp8.o: src/runp8.c src/p8.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
@@ -35,7 +38,7 @@ $(BUILD)/runp8.o: src/runp8.c src/p8.h | $(BUILD)
 $(BUILD)/p8heap.o: ../snes/p8heap.c ../snes/p8heap.h | $(BUILD)
 	$(CC) $(CFLAGS) -I../snes -c -o $@ $<
 
-$(BUILD)/runp8: $(BUILD)/runp8.o $(BUILD)/p8.o $(BUILD)/p8gfx.o $(BUILD)/p8num.o $(BUILD)/p8heap.o $(LUA_OBJS)
+$(BUILD)/runp8: $(BUILD)/runp8.o $(BUILD)/p8.o $(BUILD)/p8gfx.o $(BUILD)/p8audio.o $(BUILD)/p8num.o $(BUILD)/p8heap.o $(LUA_OBJS)
 	$(CC) -o $@ $^ -lm
 
 test: $(BUILD)/runp8

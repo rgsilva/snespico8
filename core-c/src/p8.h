@@ -55,6 +55,26 @@ void p8_set_flip(p8_flip_fn fn, void *ud);
 void p8_set_buttons(uint16_t p0, uint16_t p1); /* bit i = button i held */
 void p8_input_frame(void);      /* advance btnp held counters, once per frame */
 
+/* audio command seam (p8audio.c): the core invokes this on every sfx()/
+** music() call. The host runner prints it (parity trace); the SNES build
+** mails it to the SPC sequencer. kind is P8_ACMD_*; args are the raw
+** PICO-8 call arguments (unused ones are 0). */
+#define P8_ACMD_SFX   0   /* a=n, b=channel, c=offset, d=length */
+#define P8_ACMD_MUSIC 1   /* a=n, b=fade_ms, c=channel_mask, d=0 */
+typedef void (*p8_audio_cmd_fn)(int kind, int a, int b, int c, int d);
+void p8_set_audio_cmd(p8_audio_cmd_fn fn);
+
+/* per-note event: the note stream the SPC sequencer must reproduce (the
+** M6c golden). Emitted when a channel starts a note. Host debug/spec, not
+** frame-parity (the SPC plays it in real time; positions diverge). */
+typedef void (*p8_audio_note_fn)(int channel, int wave, int pitch, int vol, int eff);
+void p8_set_audio_note(p8_audio_note_fn fn);
+
+/* advance the host audio model one game frame (fps = 30 or 60). Host only;
+** on the SNES the SPC sequences in real time and this is not called. */
+void p8_audio_tick(int fps);
+#define P8_STAT_NONE 32767  /* p8_audio_stat: "not an audio stat" sentinel */
+
 void p8_reset(void);            /* clear RAM, default draw state */
 void p8_open(lua_State *L);     /* register the API as globals */
 uint32_t p8_frame_count(void);  /* frames presented (flip count) */

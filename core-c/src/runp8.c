@@ -63,6 +63,64 @@ static void parse_hex_bytes(const char *line, uint8_t *dst, unsigned *off)
   }
 }
 
+/* collect hex nibbles (0..15) from a line, skipping non-hex; returns count */
+static int gather_nibbles(const char *line, uint8_t *nb, int max)
+{
+  int cnt = 0;
+  const char *p;
+  for (p = line; *p && *p != '\n' && *p != '\r' && cnt < max; p++) {
+    int v = hexval(*p);
+    if (v >= 0)
+      nb[cnt++] = (uint8_t)v;
+  }
+  return cnt;
+}
+
+/* __sfx__ line (168 chars): mode/speed/loopstart/loopend (2 hex each) then
+** 32 notes of 5 hex (pitch=2, wave=1, vol=1, eff=1). Packs to 68 bytes:
+** 32 LE note words [pitch | wave<<6 | vol<<9 | eff<<12] then the 4 footer
+** bytes. dst = &p8_ram[P8_SFX + sfx*68]. (docs/audio-format.md) */
+static void parse_sfx_line(const char *line, uint8_t *dst)
+{
+  uint8_t nb[168];
+  int cnt = gather_nibbles(line, nb, 168), k;
+  if (cnt < 8)
+    return;
+  dst[64] = (uint8_t)((nb[0] << 4) | nb[1]);  /* mode  */
+  dst[65] = (uint8_t)((nb[2] << 4) | nb[3]);  /* speed */
+  dst[66] = (uint8_t)((nb[4] << 4) | nb[5]);  /* loop start */
+  dst[67] = (uint8_t)((nb[6] << 4) | nb[7]);  /* loop end */
+  for (k = 0; k < 32; k++) {
+    int o = 8 + k * 5;
+    unsigned word;
+    if (o + 5 > cnt)
+      break;
+    word = (unsigned)(((nb[o] << 4) | nb[o + 1]) & 0x3f)  /* pitch */
+         | ((unsigned)nb[o + 2] << 6)                     /* wave  */
+         | ((unsigned)nb[o + 3] << 9)                     /* vol   */
+         | ((unsigned)nb[o + 4] << 12);                   /* eff   */
+    dst[k * 2] = (uint8_t)(word & 0xff);
+    dst[k * 2 + 1] = (uint8_t)(word >> 8);
+  }
+}
+
+/* __music__ line "FF CCCCCCCC": flags byte + 4 channel bytes. Memory is
+** the 4 channel bytes with the loop flags folded into bit 7 of bytes 0/1/2
+** (loop-start / loop-end / stop). dst = &p8_ram[P8_SONG + pat*4]. */
+static void parse_music_line(const char *line, uint8_t *dst)
+{
+  uint8_t nb[16];
+  int cnt = gather_nibbles(line, nb, 16), j, flags;
+  if (cnt < 10)
+    return;
+  flags = (nb[0] << 4) | nb[1];
+  for (j = 0; j < 4; j++)
+    dst[j] = (uint8_t)((nb[2 + j * 2] << 4) | nb[3 + j * 2]);
+  if (flags & 1) dst[0] |= 0x80;
+  if (flags & 2) dst[1] |= 0x80;
+  if (flags & 4) dst[2] |= 0x80;
+}
+
 /* returns malloc'd lua source; fills RAM sections directly */
 static char *load_cart(const char *path)
 {
@@ -70,8 +128,8 @@ static char *load_cart(const char *path)
   char line[512];
   char *lua = NULL;
   size_t lua_len = 0, lua_cap = 0;
-  enum { S_NONE, S_LUA, S_GFX, S_MAP, S_GFF } sec = S_NONE;
-  unsigned gfx_off = 0, map_off = 0, gff_off = 0;
+  enum { S_NONE, S_LUA, S_GFX, S_MAP, S_GFF, S_SFX, S_MUSIC } sec = S_NONE;
+  unsigned gfx_off = 0, map_off = 0, gff_off = 0, sfx_idx = 0, music_idx = 0;
 
   if (!f) {
     fprintf(stderr, "runp8: cannot open %s\n", path);
@@ -82,6 +140,8 @@ static char *load_cart(const char *path)
     if (!strncmp(line, "__gfx__", 7)) { sec = S_GFX; continue; }
     if (!strncmp(line, "__map__", 7)) { sec = S_MAP; continue; }
     if (!strncmp(line, "__gff__", 7)) { sec = S_GFF; continue; }
+    if (!strncmp(line, "__sfx__", 7)) { sec = S_SFX; continue; }
+    if (!strncmp(line, "__music__", 9)) { sec = S_MUSIC; continue; }
     if (!strncmp(line, "__", 2) && strstr(line, "__")) { sec = S_NONE; continue; }
     switch (sec) {
     case S_LUA: {
@@ -107,6 +167,14 @@ static char *load_cart(const char *path)
     case S_GFF:
       if (gff_off < 0x100)
         parse_hex_bytes(line, &p8_ram[P8_GFLAGS], &gff_off);
+      break;
+    case S_SFX:
+      if (sfx_idx < 64)
+        parse_sfx_line(line, &p8_ram[P8_SFX + sfx_idx++ * 68u]);
+      break;
+    case S_MUSIC:
+      if (music_idx < 64)
+        parse_music_line(line, &p8_ram[P8_SONG + music_idx++ * 4u]);
       break;
     default:
       break;
@@ -135,6 +203,28 @@ static uint32_t fnv1a(const uint8_t *p, size_t n)
 
 static unsigned long ops_at_last_flip;
 static int hash_mode; /* -H: emit machine-RAM parity hashes per flip */
+static int audio_trace; /* -A: print the sfx()/music() command trace */
+
+/* audio command seam: on the host this is the parity trace (the SNES build
+** mails the same commands to the SPC). Deterministic per cart, so host and
+** SNES must emit identical lines. */
+static void audio_cmd_trace(int kind, int a, int b, int c, int d)
+{
+  if (!audio_trace)
+    return;
+  if (kind == P8_ACMD_SFX)
+    printf("SFX %d %d %d %d f=%u\n", a, b, c, d, (unsigned)p8_frame_count());
+  else
+    printf("MUS %d %d %d f=%u\n", a, b, c, (unsigned)p8_frame_count());
+}
+
+/* the note stream the SPC sequencer must reproduce (M6c golden) */
+static void audio_note_trace(int channel, int wave, int pitch, int vol, int eff)
+{
+  if (audio_trace)
+    printf("NOTE ch=%d w=%d p=%d v=%d e=%d f=%u\n", channel, wave, pitch,
+           vol, eff, (unsigned)p8_frame_count());
+}
 
 static void on_flip(void *ud)
 {
@@ -240,6 +330,7 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[i], "-i") && i + 1 < argc) inputs = argv[++i];
     else if (!strcmp(argv[i], "-p") && i + 1 < argc) ppm = argv[++i];
     else if (!strcmp(argv[i], "-H")) hash_mode = 1;
+    else if (!strcmp(argv[i], "-A")) audio_trace = 1;
     else if (!strcmp(argv[i], "-M") && i + 2 < argc) {
       measure_win_kb = atoi(argv[++i]);
       measure_total_kb = atoi(argv[++i]);
@@ -281,6 +372,8 @@ int main(int argc, char **argv)
   lua_pop(L, 1);
   p8_open(L);
   p8_set_flip(on_flip, NULL);
+  p8_set_audio_cmd(audio_cmd_trace);
+  p8_set_audio_note(audio_note_trace);
 
   if (luaL_loadbuffer(L, src, strlen(src), cart) != LUA_OK) {
     fprintf(stderr, "runp8: parse error: %s\n", lua_tostring(L, -1));
@@ -296,7 +389,8 @@ int main(int argc, char **argv)
 
   call_global(L, "_init");
   {
-    const char *upd = has_global(L, "_update60") ? "_update60" : "_update";
+    int is60 = has_global(L, "_update60");
+    const char *upd = is60 ? "_update60" : "_update";
     for (i = 0; i < nframes; i++) {
       unsigned mask = 0;
       if (inf) {
@@ -308,6 +402,7 @@ int main(int argc, char **argv)
       p8_input_frame();
       call_global(L, upd);
       call_global(L, "_draw");
+      p8_audio_tick(is60 ? 60 : 30);  /* advance the audio model one frame */
       lua_getglobal(L, "flip");   /* implicit flip after _draw */
       lua_call(L, 0, 0);
     }

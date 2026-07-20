@@ -687,6 +687,11 @@ static int api_dset(lua_State *L)
 static int api_stat(lua_State *L)
 {
   int n = p8a_optint(L, 1, 0);
+  int av = p8_audio_stat(n);
+  if (av != P8_STAT_NONE) {   /* stat(16..24): audio channel/pattern state */
+    lua_pushnumber(L, (lua_Number)p8fix_fromint(av));
+    return 1;
+  }
   if (n == 0) {
     /* Lua memory used, in KB. This is a truthful number for a cart doing
        memory-pressure checks — but it is intentionally NOT host<->SNES
@@ -726,8 +731,6 @@ static const luaL_Reg gfx_funcs[] = {
   { "cursor", api_cursor },
   { "print", api_print },
   { "btnp", api_btnp },
-  { "music", stub_nop },
-  { "sfx", stub_nop },
   { "menuitem", stub_nop },
   { "cstore", stub_nop },
   { "reload", stub_nop },
