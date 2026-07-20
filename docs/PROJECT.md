@@ -322,7 +322,15 @@ tail (phased), byte-exact `^` vs real PICO-8 (matches our oracle instead).
         measurement exposed: the block-size header was `unsigned long`
         (8 B on a 64-bit host, silently corrupting; accidentally correct
         on the SNES where long is 4 B) → now `uint32_t`.
-  - [ ] M5b: stat(0) memory reporting + graceful OOM
+  - [x] M5b: **stat(0) + graceful OOM.** stat(0) returns real Lua KB
+        used (lua_gc GCCOUNT) — truthful for memory-pressure checks, but
+        intentionally NOT host<->SNES parity-identical (smaller SNES
+        structs), like the raw PRNG state; documented. OOM is already
+        graceful via Lua's ERRMEM: a request that no window can satisfy
+        -> emergency GC -> LUA_ERRMEM -> caught by the pcall wrappers
+        (runp8 prints it / p8main mb_finish(PANIC)); the MAX_SIZET cap
+        gives "block too big" the same way. Verified both paths exit
+        cleanly (no hang/crash) on host.
   - [ ] M5c: boot Celeste (or the largest cart that boots in Mesen's
         time budget) on the SNES; GC tuning for -O0; milestone photo
 - [ ] M6: audio — SPC driver + sequencer, real-time; event-trace parity
