@@ -421,7 +421,18 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
         the framebuffer. Verified end to end (`make -C snes test-menu`): draw
         list -> launch m7_input -> live input reaches its `btn()` -> Select
         returns; single-cart path stays pixel-exact (no regression).
-        (.p8.png loader, pause/menuitem, btnp repeat still to come.)
+  - [x] M8b: **.p8.png loader.** `tools/p8png.py` decodes a real PICO-8 PNG
+        export at build time: manual PNG decode (zlib, no Pillow), the
+        2-bit-per-channel steganography, and the 'pxa' code decompression
+        (move-to-front literals + back-references) -- the pxa bit-encoding was
+        hand-derived and verified byte-exact against two real PICO-8 exports.
+        `cart2c`/`multicart2c` accept `.p8.png` anywhere a `.p8` goes (one
+        shared `parse_cart`); the SNES never sees a PNG -- the ROM gets the
+        already-decoded cart. `make -C snes test-png` boots a ROM built
+        straight from a `.p8.png` and checks the render. One catch fixed:
+        PICO-8 drops the trailing newline on export and the Calypsi lexer
+        needs it, so p8png adds it back. (Remaining M8: pause/menuitem, btnp
+        repeat.)
 - [ ] M9: perf passes — asm hot paths, measured fps corpus
 - [ ] M10: real hardware, stock SNES, flash cart
 - [ ] M11: SA-1 tier — 4x clock + 256 KB linear heap

@@ -9,50 +9,18 @@ like a stand-alone one."""
 import sys
 import os
 import io
-from cart2c import hexv, sfx_bytes, music_bytes
-
-
-def parse_cart(src):
-    """.p8 -> (lua_bytes, gfx, map, gff, sfx, music). Mirrors cart2c.main's
-    section loop (same nibble/byte rules)."""
-    lua = []
-    gfx, gmap, gff, sfx, music = [], [], [], [], []
-    sec = None
-    for line in open(src, encoding="utf-8"):
-        t = line.rstrip("\n")
-        if t.startswith("__"):
-            sec = {"__lua__": "lua", "__gfx__": "gfx", "__map__": "map",
-                   "__gff__": "gff", "__sfx__": "sfx",
-                   "__music__": "music"}.get(t.strip(), "skip")
-            continue
-        if sec == "lua":
-            lua.append(t + "\n")
-        elif sec == "gfx":
-            digs = [hexv(c) for c in t if hexv(c) is not None]
-            for i in range(0, len(digs) - 1, 2):
-                gfx.append(digs[i] | (digs[i + 1] << 4))
-        elif sec in ("map", "gff"):
-            digs = [hexv(c) for c in t if hexv(c) is not None]
-            arr = gmap if sec == "map" else gff
-            for i in range(0, len(digs) - 1, 2):
-                arr.append((digs[i] << 4) | digs[i + 1])
-        elif sec == "sfx" and len(sfx) < 64 * 68:
-            b = sfx_bytes(t)
-            if b:
-                sfx.extend(b)
-        elif sec == "music" and len(music) < 64 * 4:
-            b = music_bytes(t)
-            if b:
-                music.extend(b)
-    return "".join(lua).encode("utf-8"), gfx, gmap, gff, sfx, music
+# parse_cart handles both .p8 text and .p8.png (it dispatches to p8png).
+from cart2c import parse_cart
 
 
 def label(src):
-    """Menu label = the file's base name without .p8, capped to the width
-    the 128px menu can show (~28 chars at 4px/glyph, leave margin)."""
+    """Menu label = the file's base name without its .p8/.p8.png extension,
+    capped to the width the 128px menu can show (~28 chars at 4px/glyph)."""
     base = os.path.basename(src)
-    if base.endswith(".p8"):
-        base = base[:-3]
+    for ext in (".p8.png", ".png", ".p8"):
+        if base.endswith(ext):
+            base = base[:-len(ext)]
+            break
     return base[:20]
 
 
