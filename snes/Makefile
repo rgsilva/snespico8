@@ -148,6 +148,14 @@ test-png:
 	$(MAKE) p8 CART=../core-c/tests/carts/demo_video.p8.png FRAMES=8
 	$(MESEN) --testrunner $(BUILD)/p8.sfc test/png.lua
 
+# M8: Start-triggered pause menu. m8_pause.p8 registers menuitem() callbacks;
+# test/pause.lua drives Start -> navigate -> select and checks the callback
+# ran. FRAMES huge so the cart runs interactively.
+.PHONY: test-pause
+test-pause:
+	$(MAKE) p8 CART=../core-c/tests/carts/m8_pause.p8 FRAMES=1000000000
+	$(MESEN) --testrunner $(BUILD)/p8.sfc test/pause.lua
+
 # M6a: APU bring-up. Builds the ROM with the SPC bring-up path enabled
 # (uploads the driver, keys 3 voices, holds) and checks in Mesen that the
 # driver's voice mask at SPC $00 went non-zero — proof the whole

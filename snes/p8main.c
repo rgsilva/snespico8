@@ -275,16 +275,10 @@ static void open_pico8_libs(lua_State *L)
   p8_open(L);
 }
 
-#ifdef P8_MULTICART
-/* ---- built-in multi-cart menu (M8) --------------------------------------
-** main() uploads the SPC + probes the heap once, then loops: run_menu()
-** draws the cart list and returns the pad's pick; run_cart() boots it in a
-** fresh lua_State and, on Select, tears it down. lua_close frees the whole
-** Lua heap back (the p8heap free list coalesces) so the next cart reuses it
-** -- return-to-menu works with no reset. */
-
-/* raw auto-joypad bits for menu control (Select/Start aren't PICO-8 buttons
-** so they're read here directly, not through read_pad's 6-button map) */
+/* ---- pad + pause overlay (compiled into every build) --------------------
+** Raw auto-joypad bits for menu/pause control (Select/Start aren't PICO-8
+** buttons, so they're read here directly, not through read_pad's 6-button
+** map). */
 #define PAD_UP     0x0800u
 #define PAD_DOWN   0x0400u
 #define PAD_A      0x0080u
@@ -292,12 +286,81 @@ static void open_pico8_libs(lua_State *L)
 #define PAD_START  0x1000u
 #define PAD_SELECT 0x2000u
 
-static uint16_t pad_raw(void) { return REG16(0x4218); }
+/* A tight poll can catch $4218 mid auto-joypad-read (garbage). Wait for the
+** read-in-progress flag ($4212 bit 0) to clear first, so the value is the
+** stable latched one. */
+static uint16_t pad_raw(void)
+{
+  while (REG8(0x4212) & 1u) { }
+  return REG16(0x4218);
+}
 
 static void wait_release(uint16_t bits)
 {
   while (pad_raw() & bits) { }     /* spin until those buttons are let go */
 }
+
+/* Start-triggered pause menu (M8): "continue" + up to 5 menuitem() entries,
+** drawn as an opaque box over the current frame. On resume the cart's next
+** _draw repaints the screen -- carts that cls each frame (nearly all) clear
+** the box cleanly. */
+static void draw_pause_menu(int sel, int nitems)
+{
+  int i, by0 = 40, by1 = 40 + nitems * 8 + 5;
+  p8_fillrect(30, by0, 98, by1, 7);          /* border */
+  p8_fillrect(31, by0 + 1, 97, by1 - 1, 1);  /* inner bg */
+  for (i = 0; i < nitems; i++) {
+    int iy = by0 + 4 + i * 8;
+    const char *lbl = (i == 0) ? "continue" : p8_menu_label(i - 1);
+    if (i == sel)
+      p8_text(34, iy, 10, ">");
+    p8_text(42, iy, (unsigned char)(i == sel ? 7 : 6), lbl ? lbl : "");
+  }
+}
+
+static void run_pause(lua_State *L)
+{
+  int nitems = 1 + p8_menu_count();          /* "continue" + custom items */
+  int sel = 0, dirty = 1;
+  uint16_t prev;
+  mb_puts("PAUSE\n");                         /* telemetry for test/pause.lua */
+  wait_release(PAD_START);                   /* let the opening Start go */
+  prev = pad_raw();
+  for (;;) {
+    uint16_t cur = pad_raw();
+    uint16_t hit = (uint16_t)(cur & ~prev);
+    prev = cur;
+    if ((hit & PAD_UP) && sel > 0) { sel--; dirty = 1; }
+    if ((hit & PAD_DOWN) && sel < nitems - 1) { sel++; dirty = 1; }
+    if (hit & PAD_START) { wait_release(PAD_START); return; }   /* resume */
+    if (hit & (PAD_A | PAD_B)) {              /* O/X selects */
+      wait_release(PAD_A | PAD_B);
+      if (sel == 0) return;                   /* continue */
+      if (!p8_menu_invoke(L, sel - 1)) return;/* ran; close unless it said stay */
+      dirty = 1;
+    }
+    if (dirty) { draw_pause_menu(sel, nitems); snes_flip(NULL); dirty = 0; }
+  }
+}
+
+/* per-frame: open the pause menu on a fresh Start press. An idle pad (the
+** bounded test harnesses) never triggers it, so those stay deterministic. */
+static uint16_t g_pause_prev;
+static void maybe_pause(lua_State *L)
+{
+  uint16_t cur = pad_raw();
+  if ((uint16_t)(cur & ~g_pause_prev) & PAD_START)
+    run_pause(L);
+  g_pause_prev = pad_raw();                   /* re-read: run_pause may have waited */
+}
+
+#ifdef P8_MULTICART
+/* ---- built-in multi-cart menu (M8) --------------------------------------
+** main() uploads the SPC + probes the heap once, then loops: run_menu()
+** draws the cart list and returns the pad's pick; run_cart() boots it in a
+** fresh lua_State and, on Select, tears it down. lua_close frees the whole
+** Lua heap back (the p8heap free list coalesces) so the next cart reuses it
+** -- return-to-menu works with no reset. */
 
 /* like run_global but returns -1 instead of killing the ROM, so a crashing
 ** cart just drops back to the menu */
@@ -410,6 +473,7 @@ static void run_cart(const MultiCart *mc)
         break;
       p8_set_buttons(read_pad(0x4218ul), read_pad(0x421Aul));
       p8_input_frame();
+      maybe_pause(L);
       if (menu_run_global(L, upd) < 0)
         break;
       if (menu_run_global(L, "_draw") < 0)
@@ -557,6 +621,7 @@ int main(void)
       }
       p8_set_buttons(mask, mask2);
       p8_input_frame();
+      maybe_pause(L);
       run_global(L, upd);
       run_global(L, "_draw");
       lua_getglobal(L, "flip");      /* implicit flip after _draw */

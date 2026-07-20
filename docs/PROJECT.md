@@ -410,7 +410,7 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
       No virtual keyboard: PICO-8 is a joypad machine (devkit keyboard stays
       deferred; a d-pad overlay is the only way it could ever be done, and few
       carts need it).
-- [ ] M8: carting/UX — .p8.png+pxa decoder, multi-cart menu ROM,
+- [x] M8: carting/UX — .p8.png+pxa decoder, multi-cart menu ROM,
       pause/menuitem, btnp repeat
   - [x] M8a: **multi-cart menu ROM.** `tools/multicart2c.py` bundles N .p8
         carts into one ROM (a `cart_multi.h` descriptor table); `p8main.c`
@@ -431,8 +431,20 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
         already-decoded cart. `make -C snes test-png` boots a ROM built
         straight from a `.p8.png` and checks the render. One catch fixed:
         PICO-8 drops the trailing newline on export and the Calypsi lexer
-        needs it, so p8png adds it back. (Remaining M8: pause/menuitem, btnp
-        repeat.)
+        needs it, so p8png adds it back.
+  - [x] M8c: **pause menu + menuitem().** Start opens an in-game overlay
+        ("continue" + up to 5 `menuitem()` entries) drawn over the frame;
+        d-pad navigates, O/X selects -- a custom item runs its Lua callback
+        (staying open if it returns true), "continue"/Start resumes.
+        `menuitem()` is a real registry in the core (labels + callback refs,
+        reset per lua_State via `p8_menu_*`); the SNES overlay draws with
+        `p8_text`/`p8_fillrect` and drives it with the raw pad. Verified end
+        to end (`make -C snes test-pause`): Start -> navigate -> select runs
+        the callback. Fixed a real input bug found here: a tight pad poll
+        could read `$4218` mid auto-joypad-read (garbage), so `pad_raw` now
+        waits on `$4212` bit 0 first. **btnp repeat** is the core's
+        held-counter repeat (M2, delay/interval at 0x5f5c/0x5f5d), live now
+        that M7 reads the real pad. **M8 complete.**
 - [ ] M9: perf passes — asm hot paths, measured fps corpus
 - [ ] M10: real hardware, stock SNES, flash cart
 - [ ] M11: SA-1 tier — 4x clock + 256 KB linear heap
