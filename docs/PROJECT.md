@@ -445,7 +445,16 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
         waits on `$4212` bit 0 first. **btnp repeat** is the core's
         held-counter repeat (M2, delay/interval at 0x5f5c/0x5f5d), live now
         that M7 reads the real pad. **M8 complete.**
-- [ ] M9: perf passes — asm hot paths, measured fps corpus
+- [ ] M9: perf passes — asm hot paths, measured fps corpus. **Planned** —
+      see `docs/M9-perf-plan.md`: a listing-level audit found the whole
+      runtime still builds at -O0 (the two known -O2 miscompiles are both in
+      the cold lexer), trivial fix32 ops compile to far-call storms, and
+      `p8fix_toint` pays a `_Div32` per integer API argument that even -O2
+      keeps. Plan: measure (fixed bench + PC-sampling profile) -> pure-C
+      wins (toint shift, luaconf inline macros) -> selective -O2 on hot TUs
+      gated by an N-layout parity battery + .lst fences -> gfx inner loops
+      -> LUT flip expand (the ~6 fps flip ceiling is the visible limit) ->
+      asm mul/div leaves; per-op VM split only as contingency.
 - [ ] M10: real hardware, stock SNES, flash cart
 - [ ] M11: SA-1 tier — 4x clock + 256 KB linear heap
 - [x] M12: **documentation pass** — `docs/BUILDING.md` (prerequisites + every

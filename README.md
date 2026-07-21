@@ -23,6 +23,7 @@ docs/     project brief, build guide, format + design notes
 - [`docs/BUILDING.md`](docs/BUILDING.md) — prerequisites and every make target.
 - [`docs/cart-formats.md`](docs/cart-formats.md) — `.p8` and `.p8.png` (stego + pxa).
 - [`docs/audio-format.md`](docs/audio-format.md) — SFX/music memory format + timing.
+- [`docs/M9-perf-plan.md`](docs/M9-perf-plan.md) — the M9 performance plan (audit, tiers, validation).
 
 ## Milestones
 
@@ -103,4 +104,8 @@ docs/     project brief, build guide, format + design notes
   installs Calypsi from its official release + builds WLA-DX). A `v*` tag
   publishes a release with `snespico8.sfc` attached; the CI ROM is
   byte-identical to a local `make -C snes release`.
-- Next: M9 (perf) — the swing toward playable (asm hot paths, fps corpus).
+- Next: M9 (perf) — the swing toward playable. Planned in
+  [`docs/M9-perf-plan.md`](docs/M9-perf-plan.md): the runtime still builds at
+  -O0; the plan is measure → pure-C wins → selective -O2 (parity-gated) →
+  gfx/flip paths → asm leaves. Honest ceiling: simple carts playable,
+  API-heavy carts at real frame rates; real-time Celeste stays M11 (SA-1).
