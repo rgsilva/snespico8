@@ -4,6 +4,18 @@ The runtime is a real Lua interpreter with the PICO-8 dialect and API — so
 "does cart X run" is mostly "which APIs does it call" and "how fast is it",
 not "does the CPU emulation cope".
 
+## Gallery
+
+Everything below is the actual SNES ROM rendering through Mode 7 in Mesen,
+captured by the test harnesses (`make test-demo`, `make test-celeste`).
+
+| | |
+|---|---|
+| <img src="assets/menu.png" width="360" alt="cart menu"> | **The cart menu** — the public demo ROM boots here; pick with the d-pad, O launches, Select returns. |
+| <img src="assets/demo_video.png" width="360" alt="demo_video cart"> | **`demo_video.p8`** — the graphics test: the 16-color master palette, animated circles, `print`. |
+| <img src="assets/celeste_title.png" width="360" alt="Celeste Classic title"> | **Celeste Classic (evercore)** title screen — 27 KB of Lua parsed on-console, drawn by the real `_draw`. Cart © Maddy Thorson & Noel Berry (CC-BY-NC-SA), never bundled — build locally with `make test-celeste`. |
+| <img src="assets/m7_first_light.png" width="360" alt="Mode 7 first light"> | **First light** (M0): the Mode 7 chunky-framebuffer spike that proved the whole display path before a line of Lua ran. |
+
 ## What boots and runs
 
 - **The demo ROM** (`make -C snes demo-rom`): our own graphics test, live

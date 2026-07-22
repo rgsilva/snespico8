@@ -1,122 +1,111 @@
-# snespico8 — PICO-8 carts on a stock SNES
+# snespico8
 
-Sister project to [snes86](../emu8086) (8086 PC emulator for the SNES).
-Runs real PICO-8 cartridges on unmodified SNES hardware: the z8lua
-runtime + PICO-8 API in portable C, compiled for the 65816 with Calypsi,
-Mode 7 as a chunky 128x128 framebuffer, SPC700 playing the music in real
-time while the game runs in slow motion.
+Run real PICO-8 cartridges on a stock, unmodified SNES.
+
+snespico8 is the PICO-8 fantasy console rebuilt for real 16-bit hardware: the
+z8lua interpreter and the full PICO-8 API in portable C, compiled for the
+65816, with Mode 7 as a chunky 128x128 framebuffer and the SPC700 playing the
+cart's music in real time while the game runs. It ships as a single flashable
+`.sfc` — no special cartridge chip, just a Super Nintendo and its sound chip
+doing what they were always capable of.
+
+<p align="center">
+  <img src="docs/assets/menu.png" width="480" alt="the snespico8 cart menu on a SNES"><br>
+  <sub>The built-in cart menu. More shots in <a href="docs/COMPATIBILITY.md">COMPATIBILITY.md</a>.</sub>
+</p>
+
+## Wait, what?
+
+There is no CPU emulation here — PICO-8 carts are Lua source, so the SNES
+runs them the way the desktop console does: by interpreting them.
+
+- **A real Lua** (z8lua 5.2 with the PICO-8 dialect: fix32 numbers, `<<>`,
+  `\`, all of it) compiled to the 65816 by Calypsi C, with the Lua heap
+  living in cartridge SRAM (8 KB HiROM windows, probed at boot).
+- **PICO-8's 64 KB machine RAM is WRAM bank $7F, byte for byte** — `peek`
+  and `poke` are direct loads and stores.
+- **Mode 7 as a framebuffer**: the only SNES mode with byte-per-pixel tiles,
+  driven as a static 128x128 screen through a LUT expand + VRAM DMA.
+- **The SPC700 is the audio chip, really**: the cart's SFX/music stream into
+  APU RAM at load, and an autonomous sequencer plays them — in tune, with
+  all eight note effects — in real time, whatever the game loop is doing.
+- **`.p8` and `.p8.png` both work**: the PNG stego + pxa decode happens at
+  build time on the host, so a cart export drops straight in.
+
+How it all works, including the six documented Calypsi miscompiles and the
+test net built around them: [docs/INTERNALS.md](docs/INTERNALS.md).
+
+## How do we know it's correct?
+
+The same core C sources build a host binary (`runp8`) and the SNES ROM. The
+host side is pinned to a live z8lua oracle (149 printh vectors) and to real
+PICO-8; the SNES side is then proven **bit-identical to the host** — printh
+output, framebuffer hashes and machine-RAM hashes, per flip, across the
+whole cart suite (`core-c/tests/snesparity.sh`). Codegen-sensitive changes
+additionally pass a five-layout link-perturbation battery, listing-level
+miscompile fences, a differential fuzzer (exhaustive where feasible: all
+2^32 toint inputs), and on-target A/B tests for anything that touches
+hardware math. This net has caught six compiler bugs and three latent core
+bugs to date; none shipped.
+
+## Try it
+
+```
+cd snes && make release      # -> build/snespico8.sfc  (the public demo ROM)
+```
+
+The public ROM bundles our own demo carts (graphics test, live joypad
+readout, music demo) behind the cart menu — everything in it is freely
+redistributable. To build a ROM around your own cart:
+
+```
+cd snes && make play PLAYCART=path/to/cart.p8    # or .p8.png
+```
+
+Prerequisites (Calypsi, WLA-DX, Mesen for the test suites) and every make
+target: [docs/BUILDING.md](docs/BUILDING.md).
+
+## Docs
+
+| doc | what |
+|---|---|
+| [docs/INTERNALS.md](docs/INTERNALS.md) | how a fantasy console runs on a 65816; the Calypsi minefield and its fences |
+| [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | what runs, how fast, API coverage, pinned edge semantics — with screenshots |
+| [docs/PERF.md](docs/PERF.md) | where the time goes; the measurement rig; rules of the road |
+| [docs/BUILDING.md](docs/BUILDING.md) | build the ROM + bring your own carts |
+| [docs/FUTURE.md](docs/FUTURE.md) | the VM split, real hardware, SA-1, the backlog |
+| [docs/PROJECT.md](docs/PROJECT.md) | the original brief + the full milestone log |
+| [docs/cart-formats.md](docs/cart-formats.md), [docs/audio-format.md](docs/audio-format.md), [docs/M9-perf-plan.md](docs/M9-perf-plan.md) | format notes and the M9 perf log |
 
 ## Layout
 
 ```
-core-c/   PC reference core (z8lua + PICO-8 API) — same C source the
-          SNES build compiles; correctness oracle + local runner (runp8)
-snes/     65816/WLA-DX glue, Mode 7 video, SPC driver, Mesen2 test harness
-carts/    .p8 test carts (micro-cart vector suite; BBS carts gitignored)
-tools/    third-party toolchains/checkouts (gitignored): Calypsi, z8lua ref
-docs/     project brief, build guide, format + design notes
+core-c/          the console in portable C: z8lua + the PICO-8 API. Builds
+                 runp8 (host oracle/runner) and, via Calypsi, the SNES core.
+snes/            the SNES ROM: boot/game loop, Mode 7 video, SRAM heap,
+                 SPC-700 driver, CPU-math-unit helpers, Mesen harnesses.
+                 `make release` -> build/snespico8.sfc
+carts/           micro-cart test suite (BBS carts stay local: not ours to ship)
+docs/            documentation + the design brief
+tools/           third-party checkouts (Calypsi, z8lua, ...) — gitignored
 ```
-
-## Documentation
-
-- [`docs/PROJECT.md`](docs/PROJECT.md) — full brief, constraints, milestone log.
-- [`docs/INTERNALS.md`](docs/INTERNALS.md) — how it works: the shared core, Mode 7, the SPC, the Calypsi minefield and its fences.
-- [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) — what runs, how fast, API coverage, pinned edge semantics.
-- [`docs/PERF.md`](docs/PERF.md) — where the time goes; the measurement rig; rules of the road.
-- [`docs/FUTURE.md`](docs/FUTURE.md) — T6, hardware bring-up, SA-1, the backlog.
-- [`docs/BUILDING.md`](docs/BUILDING.md) — prerequisites and every make target.
-- [`docs/cart-formats.md`](docs/cart-formats.md) — `.p8` and `.p8.png` (stego + pxa).
-- [`docs/audio-format.md`](docs/audio-format.md) — SFX/music memory format + timing.
-- [`docs/M9-perf-plan.md`](docs/M9-perf-plan.md) — the M9 milestone log (audit, tiers, results table, validation).
-
-## Milestones
-
-| # | milestone | status |
-|---|-----------|--------|
-| M0 | kill-or-commit spikes | ✅ |
-| M1–M2 | PC reference core (fix32, full API, Celeste on host) | ✅ |
-| M3–M4 | core on the SNES, **bit-identical** to host | ✅ |
-| M5 | heap tier — Celeste boots on the SNES (slow) | ✅ |
-| M6 | real-time SPC audio + all note effects | ✅ |
-| M7 | live controller input | ✅ |
-| M8 | carting/UX — menu, `.p8.png`, pause menu + `menuitem()` | ✅ |
-| M9 | perf passes | 🔶 |
-| M10 | real hardware | ⬜ |
-| M11 | SA-1 tier | ⬜ |
-| M12 | documentation pass | ✅ |
-| M13 | demo ROM | ✅ |
-| M14 | CI (host suites + builds the ROM) + release | ✅ |
 
 ## Status
 
-- **M0 COMPLETE — all four kill-or-commit spikes green.**
-- M0b: **vanilla Lua 5.2.4 boots and runs on the SNES** (Mesen2, Calypsi
-  -O0, ~170 KB ROM) — parses and executes a table/loop test script with
-  the correct result. Three Calypsi codegen bugs found, characterized
-  and worked around (see `bugs/`).
-- M0c: SRAM ground truth: 128 KB usable (header $08, banks $70-$73).
-- M0d: Mode 7 chunky-framebuffer path proven and measured — full-screen
-  expansion+DMA ≈ 6 fps ceiling unoptimized (`snes/test/m7demo.png`).
-  Rendering will not be the bottleneck.
-- M1 done: PC reference core — fix32 numbers, full P8 dialect and
-  library, all oracle-exact against z8lua (149 vector outputs) and
-  against **real PICO-8** (`tests/realvec.sh`).
-- M2 done: full graphics API — Celeste Classic (evercore) runs
-  deterministically on the reference core, title screen to gameplay.
-- M1.5 done: measured ~30K VM ops/frame for Celeste gameplay, ~1.5K
-  title; API-heavy carts near-VM-free.
-- M3 done: the same core, compiled with Calypsi, boots a cart on the
-  SNES (`make -C snes test-p8`) — Mode 7 output, framebuffer pixel-exact
-  vs the host oracle. Measured ~1,260 VM ops/sec at -O0; 256 KB SRAM heap.
-- M4 done: the SNES build is proven bit-identical to the host core
-  (`core-c/tests/snesparity.sh`) — 149 printh vector lines and per-flip
-  framebuffer+RAM hashes all match, across 6 gfx carts and a d-pad input
-  cart. Two Calypsi codegen bugs caught and fixed along the way.
-- **M5 done: Celeste Classic boots and runs on the SNES**
-  (`make -C snes test-celeste`) — parses 27 KB of Lua, runs _init + the
-  game loop, draws its title through Mode 7. Heap peak ~100 KB, zero
-  allocation failures (HiROM 8 KB windows suffice — measured on host
-  first via `runp8 -M`, confirmed on hardware). stat(0) + graceful OOM.
-- **M6 done: the SPC plays SFX + music in real time while the game loop
-  crawls** — the signature effect. The SPC700 runs an autonomous sequencer
-  (timer-ticked at ~121 Hz) from the cart's SFX/music streamed into its own
-  RAM; the core's `sfx()`/`music()` just send "play" commands. 8 PICO-8
-  waveforms as looped BRR, notes in tune to the DSP pitch register. A cart's
-  `music(0)` drives the SPC end to end (`make -C snes test-audio`); the SPC
-  keeps playing after the game loop stops. All 8 per-tick note effects
-  (slide/vibrato/drop/fade-in/out/arp) run SPC-side too — fades via the DSP
-  envelope, pitch effects via per-tick reprogramming (`make -C snes test-fx`).
-  A loadable demo (a melody that plucks + a bass line, over a slow-updating
-  screen) builds with `make -C snes demo` — open `snes/build/p8.sfc` in Mesen
-  with sound on.
-- **M7 done: the ROM reads the real SNES controller** (`make -C snes
-  test-input`). Auto-joypad on; `read_pad` decodes `$4218/$421A` into
-  `btn()`/`btnp()` each frame (d-pad → dirs, O = B/Y, X = A/X) — the first
-  interactive build. Baked input traces still drive the parity tests, so M4
-  stays pixel-exact. No virtual keyboard: PICO-8 is a joypad machine.
-- **M8 done — carting/UX**: a **multi-cart menu ROM** (`make -C snes menu`)
-  bundling carts, each run in a fresh `lua_State` (Select returns); a
-  **`.p8.png` loader** (`make -C snes test-png`) that decodes real PICO-8 PNG
-  carts at build time (stego + hand-rolled pxa), so `.p8.png` works anywhere
-  `.p8` does; and a **Start pause menu** with `menuitem()` callbacks
-  (`make -C snes test-pause`). btnp repeat rides M7's live input.
-- **Demo ROM** (`make -C snes demo-rom`): the menu curated with our own test
-  carts — a graphics test, a live joypad readout, and the music demo (all
-  ours, freely shippable; `make -C snes test-demo` verifies it).
-- **Release + CI**: GitHub CI (`.github/workflows/build.yml`) builds it all —
-  the host suites (`make -C core-c check-ci`) *and* the flashable ROM (it
-  installs Calypsi from its official release + builds WLA-DX). A `v*` tag
-  publishes a release with `snespico8.sfc` attached; the CI ROM is
-  byte-identical to a local `make -C snes release`.
-- **M9 (perf) in progress — T0–T5 landed** ([`docs/M9-perf-plan.md`](docs/M9-perf-plan.md)):
-  measurement rig (live mailbox telemetry, PC-sampling profiler, codegen
-  fences, differential fuzzer, perturbed-layout roulette battery, on-target
-  A/B ROM), pure-C fix32 wins, selective -O2 --speed on the hot TUs (ROM
-  halved to 256 KB), a LUT flip path (**fps ceiling 1.37 → ~5.5, 4x**),
-  per-shape draw-context snapshots (**draw-bound carts ~3x**), and fix32
-  mul/div on the CPU hardware math units (**mul +38%**). The gates caught
-  and fixed two latent never-terminating shift paths, a z8lua shift
-  divergence, and **three fresh Calypsi miscompiles** — none of it shipped.
-  Remaining: T6 (per-opcode VM split — the real VM lever; Calypsi's
-  optimizer gives up inside the giant interpreter body) + polish.
-  Real-time Celeste stays M11 (SA-1).
+Milestones M0–M8 and M12–M14 are done: the core is oracle-exact, Celeste
+Classic boots to its title on the SNES, audio and input are real-time, CI
+builds the ROM. M9 (performance) is mid-flight — T0–T5 landed (fps ceiling
+4x, draw carts 3x, hardware mul +38%, ROM halved); the per-opcode VM split
+remains. Real-hardware verification (M10) and the SA-1 tier (M11) are next.
+Everything so far is developed against the cycle-accurate
+[Mesen](https://www.mesen.ca/) — if you flash it to a cart, we'd love a
+report. Details: [docs/PROJECT.md](docs/PROJECT.md).
+
+## Legal & credits
+
+Lua and z8lua are MIT ([zetalog/z8lua](https://github.com/samhocevar/z8lua));
+our runtime and tools ship with source. PICO-8 is a trademark of Lexaloffle
+Games — this project is an independent runtime and includes **no Lexaloffle
+assets, carts, or code**; BBS carts are for local testing only and are never
+redistributed. Calypsi C is free for personal use and is downloaded, never
+redistributed. The font tables derive from fake-08 (MIT).
