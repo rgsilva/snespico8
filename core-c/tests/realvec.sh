@@ -5,7 +5,7 @@
 # Skips politely when PICO-8 isn't installed (CI-friendliness).
 set -e
 cd "$(dirname "$0")/.."
-P8BIN=/Applications/PICO-8.app/Contents/MacOS/pico8
+P8BIN="${PICO8:-/Applications/PICO-8.app/Contents/MacOS/pico8}"   # override: PICO8=/path/to/pico8
 if [ ! -x "$P8BIN" ]; then
   echo "REALVEC SKIP (PICO-8 not installed)"
   exit 0
