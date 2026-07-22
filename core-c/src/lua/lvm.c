@@ -609,6 +609,66 @@ typedef struct VMCtx {
   StkId base;
 } VMCtx;
 
+/* ---- M9 T6: per-opcode bodies --------------------------------------
+** Verbatim ports of the vmcase bodies (which now just call them): small
+** functions Calypsi's register allocator can face. ProtectV keeps
+** v->base authoritative across anything that can move the stack; ra is
+** captured before ProtectV exactly where the original captured it
+** before Protect. */
+
+#define ProtectV(x)	{ {x;}; v->base = v->ci->u.l.base; }
+
+#define vRA(i)	(v->base+GETARG_A(i))
+#define vRB(i)	check_exp(getBMode(GET_OPCODE(i)) == OpArgR, v->base+GETARG_B(i))
+#define vRKB(i)	check_exp(getBMode(GET_OPCODE(i)) == OpArgK, \
+	ISK(GETARG_B(i)) ? v->k+INDEXK(GETARG_B(i)) : v->base+GETARG_B(i))
+#define vRKC(i)	check_exp(getCMode(GET_OPCODE(i)) == OpArgK, \
+	ISK(GETARG_C(i)) ? v->k+INDEXK(GETARG_C(i)) : v->base+GETARG_C(i))
+
+#define DEF_ARITH(name, op, tm) \
+static void name (VMCtx *v, Instruction i) { \
+  lua_State *L = v->L; \
+  TValue *rb = vRKB(i); \
+  TValue *rc = vRKC(i); \
+  if (ttisnumber(rb) && ttisnumber(rc)) { \
+    lua_Number nb = nvalue(rb), nc = nvalue(rc); \
+    setnvalue(vRA(i), op(L, nb, nc)); \
+  } \
+  else { StkId ra = vRA(i); ProtectV(luaV_arith(L, ra, rb, rc, tm)); } \
+}
+
+#define DEF_UNARY(name, op, tm) \
+static void name (VMCtx *v, Instruction i) { \
+  lua_State *L = v->L; \
+  TValue *rb = vRB(i); \
+  if (ttisnumber(rb)) { \
+    lua_Number nb = nvalue(rb); \
+    setnvalue(vRA(i), op(L, nb)); \
+  } \
+  else { StkId ra = vRA(i); ProtectV(luaV_arith(L, ra, rb, rb, tm)); } \
+}
+
+DEF_ARITH(vmop_add,  luai_numadd,  TM_ADD)
+DEF_ARITH(vmop_sub,  luai_numsub,  TM_SUB)
+DEF_ARITH(vmop_mul,  luai_nummul,  TM_MUL)
+DEF_ARITH(vmop_div,  luai_numdiv,  TM_DIV)
+DEF_ARITH(vmop_mod,  luai_nummod,  TM_MOD)
+DEF_ARITH(vmop_pow,  luai_numpow,  TM_POW)
+DEF_ARITH(vmop_idiv, luai_numidiv, TM_IDIV)
+DEF_ARITH(vmop_band, luai_numband, TM_BAND)
+DEF_ARITH(vmop_bor,  luai_numbor,  TM_BOR)
+DEF_ARITH(vmop_bxor, luai_numbxor, TM_BXOR)
+DEF_ARITH(vmop_shl,  luai_numshl,  TM_SHL)
+DEF_ARITH(vmop_shr,  luai_numshr,  TM_SHR)
+DEF_ARITH(vmop_lshr, luai_numlshr, TM_LSHR)
+DEF_ARITH(vmop_rotl, luai_numrotl, TM_ROTL)
+DEF_ARITH(vmop_rotr, luai_numrotr, TM_ROTR)
+DEF_UNARY(vmop_unm,   luai_numunm,   TM_UNM)
+DEF_UNARY(vmop_bnot,  luai_numbnot,  TM_BNOT)
+DEF_UNARY(vmop_peek,  luai_numpeek,  TM_PEEK)
+DEF_UNARY(vmop_peek2, luai_numpeek2, TM_PEEK2)
+DEF_UNARY(vmop_peek4, luai_numpeek4, TM_PEEK4)
+
 void luaV_execute (lua_State *L) {
   VMCtx v;
   v.L = L;
@@ -699,64 +759,64 @@ void luaV_execute (lua_State *L) {
         Protect(luaV_gettable(L, rb, RKC(i), ra));
       )
       vmcase(OP_ADD,
-        arith_op(luai_numadd, TM_ADD);
+        vmop_add(&v, i);
       )
       vmcase(OP_SUB,
-        arith_op(luai_numsub, TM_SUB);
+        vmop_sub(&v, i);
       )
       vmcase(OP_MUL,
-        arith_op(luai_nummul, TM_MUL);
+        vmop_mul(&v, i);
       )
       vmcase(OP_DIV,
-        arith_op(luai_numdiv, TM_DIV);
+        vmop_div(&v, i);
       )
       vmcase(OP_MOD,
-        arith_op(luai_nummod, TM_MOD);
+        vmop_mod(&v, i);
       )
       vmcase(OP_POW,
-        arith_op(luai_numpow, TM_POW);
+        vmop_pow(&v, i);
       )
       vmcase(OP_IDIV,
-        arith_op(luai_numidiv, TM_IDIV);
+        vmop_idiv(&v, i);
       )
       vmcase(OP_BAND,
-        arith_op(luai_numband, TM_BAND);
+        vmop_band(&v, i);
       )
       vmcase(OP_BOR,
-        arith_op(luai_numbor, TM_BOR);
+        vmop_bor(&v, i);
       )
       vmcase(OP_BXOR,
-        arith_op(luai_numbxor, TM_BXOR);
+        vmop_bxor(&v, i);
       )
       vmcase(OP_SHL,
-        arith_op(luai_numshl, TM_SHL);
+        vmop_shl(&v, i);
       )
       vmcase(OP_SHR,
-        arith_op(luai_numshr, TM_SHR);
+        vmop_shr(&v, i);
       )
       vmcase(OP_LSHR,
-        arith_op(luai_numlshr, TM_LSHR);
+        vmop_lshr(&v, i);
       )
       vmcase(OP_ROTL,
-        arith_op(luai_numrotl, TM_ROTL);
+        vmop_rotl(&v, i);
       )
       vmcase(OP_ROTR,
-        arith_op(luai_numrotr, TM_ROTR);
+        vmop_rotr(&v, i);
       )
       vmcase(OP_UNM,
-        unary_op(luai_numunm, TM_UNM);
+        vmop_unm(&v, i);
       )
       vmcase(OP_BNOT,
-        unary_op(luai_numbnot, TM_BNOT);
+        vmop_bnot(&v, i);
       )
       vmcase(OP_PEEK,
-        unary_op(luai_numpeek, TM_PEEK);
+        vmop_peek(&v, i);
       )
       vmcase(OP_PEEK2,
-        unary_op(luai_numpeek2, TM_PEEK2);
+        vmop_peek2(&v, i);
       )
       vmcase(OP_PEEK4,
-        unary_op(luai_numpeek4, TM_PEEK4);
+        vmop_peek4(&v, i);
       )
       vmcase(OP_NOT,
         TValue *rb = RB(i);
