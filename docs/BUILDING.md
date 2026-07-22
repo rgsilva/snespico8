@@ -23,8 +23,9 @@ build time with our own tools. (If you own PICO-8 you can additionally run
 committed vectors already encode those results.)
 
 Calypsi is licensed **personal, non-commercial (hobby)** use only and may
-**not be redistributed** — hence it is gitignored, and CI cannot build the
-ROM (see M14). z8lua is open source (`samhocevar/z8lua`, build with `make`);
+**not be redistributed** — hence it is gitignored here; CI installs it
+from the author's own official release, exactly as a developer would
+(see Release below). z8lua is open source (`samhocevar/z8lua`, build with `make`);
 build it into `tools/z8lua/` so the suites find `tools/z8lua/z8lua`.
 
 ## Host core (no Calypsi needed)
@@ -163,3 +164,10 @@ The CI ROM is **byte-identical** to a local `make -C snes release` (the
 cross-compile is deterministic), which you can still run to build/test the ROM
 yourself. It ships only our own carts (no Lexaloffle/BBS assets), so it is
 freely redistributable.
+
+Every push also uploads a `snespico8-roms` artifact with ready-to-run
+`.sfc` images: the release menu ROM, its bytecode variant
+(`P8BYTECODE=1`, ~3x faster boot — building it in CI also exercises the
+p8luac cross-dumper on a clean host), and single-cart ROMs of the demo
+carts (`demo_video`, `demo_input`, `m6_demo`). Grab them from any green
+run's Actions page — no toolchain needed.

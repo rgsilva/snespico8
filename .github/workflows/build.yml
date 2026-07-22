@@ -79,11 +79,33 @@ jobs:
       - name: Build the release ROM
         run: make -C snes release P8CALDIR="$CAL" CALDIR="$CAL" PVBIN="$WLABIN"
 
-      - name: Upload the ROM artifact
+      # A bytecode variant of the same ROM: the cart Lua is precompiled on
+      # the runner by p8luac (built here from core-c) -- boots ~3x faster
+      # and exercises the whole cross-dumper pipeline on a clean Linux host.
+      - name: Build the bytecode release ROM
+        run: |
+          make -C snes release P8BYTECODE=1 RELEASEROM=build/snespico8-bytecode.sfc \
+            P8CALDIR="$CAL" CALDIR="$CAL" PVBIN="$WLABIN"
+
+      # Single-cart "just play it" ROMs from our own test carts (all freely
+      # shippable): video, joypad and audio demos, one .sfc each.
+      - name: Build the test-cart ROMs
+        run: |
+          mkdir -p snes/build/roms
+          for cart in demo_video demo_input m6_demo; do
+            make -C snes play PLAYCART=../core-c/tests/carts/$cart.p8 P8BYTECODE=1 \
+              P8CALDIR="$CAL" CALDIR="$CAL" PVBIN="$WLABIN"
+            cp snes/build/p8.sfc snes/build/roms/$cart.sfc
+          done
+          cp snes/build/snespico8.sfc snes/build/roms/
+          cp snes/build/snespico8-bytecode.sfc snes/build/roms/
+          ls -la snes/build/roms/
+
+      - name: Upload the ROM artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: snespico8-rom
-          path: snes/build/snespico8.sfc
+          name: snespico8-roms
+          path: snes/build/roms/*.sfc
 
       # On a v* tag: publish a release with the ROM and auto-generated notes.
       - name: Publish release
@@ -91,7 +113,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: snes/build/snespico8.sfc
+          files: |
+            snes/build/snespico8.sfc
+            snes/build/snespico8-bytecode.sfc
           body: |
             snespico8 -- a PICO-8 runtime for a stock SNES. Built end to end by
             CI (host regression suites + the SNES ROM). The ROM ships only our

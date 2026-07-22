@@ -100,11 +100,12 @@ check: $(BUILD)/runp8 $(XDUMPDIR)/p8luac
 # and on the 65816, confirmed bit-exact by M4 parity); gcc rounds it to
 # +/-1, so libvec is host-compiler sensitive. It stays a local/reference
 # check, not a CI gate.
-check-ci: $(BUILD)/runp8
+check-ci: $(BUILD)/runp8 $(XDUMPDIR)/p8luac
 	bash tests/numvec.sh
 	bash tests/dialectvec.sh
 	bash tests/gfxvec.sh
 	bash tests/audiovec.sh
+	bash tests/dumpvec.sh
 
 # M9: differential fuzzer gating every p8num rewrite (exhaustive toint,
 # pow2-divisor div sweep, luaconf macro replicas). Single TU on purpose:
