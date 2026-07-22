@@ -57,6 +57,7 @@ int luaV_tostring (lua_State *L, StkId obj) {
 }
 
 
+#ifndef P8_NO_HOOKS
 static void traceexec (lua_State *L) {
   CallInfo *ci = L->ci;
   lu_byte mask = L->hookmask;
@@ -88,6 +89,7 @@ static void traceexec (lua_State *L) {
     luaD_throw(L, LUA_YIELD);
   }
 }
+#endif /* !P8_NO_HOOKS */
 
 
 static void callTM (lua_State *L, const TValue *f, const TValue *p1,
@@ -548,8 +550,6 @@ void luaV_finishOp (lua_State *L) {
 	ISK(GETARG_B(i)) ? v.k+INDEXK(GETARG_B(i)) : v.base+GETARG_B(i))
 #define RKC(i)	check_exp(getCMode(GET_OPCODE(i)) == OpArgK, \
 	ISK(GETARG_C(i)) ? v.k+INDEXK(GETARG_C(i)) : v.base+GETARG_C(i))
-#define KBx(i)  \
-  (v.k + (GETARG_Bx(i) != 0 ? GETARG_Bx(i) - 1 : GETARG_Ax(*v.ci->u.l.savedpc++)))
 
 
 /* execute a jump instruction */
@@ -838,12 +838,20 @@ void luaV_execute (lua_State *L) {
     p8_opstats[GET_OPCODE(i)]++;  /* host-only: T6 split-set evidence */
 #endif
     StkId ra;
+#ifndef P8_NO_HOOKS
+    /* SNES builds compile the hook check out (P8_NO_HOOKS): PICO-8
+    ** exposes no sethook path, and the test costs a far read + branch
+    ** on every dispatched op. debug.sethook on such a build sets state
+    ** the VM never reads (pinned in docs/COMPATIBILITY.md). */
     if ((L->hookmask & (LUA_MASKLINE | LUA_MASKCOUNT)) &&
         (--L->hookcount == 0 || L->hookmask & LUA_MASKLINE)) {
       Protect(traceexec(L));
     }
-    /* WARNING: several calls may realloc the stack and invalidate `ra' */
-    ra = RA(i);
+#endif
+    /* M9 T7: `ra' is computed inside the cases that use it -- the hot
+    ** per-op functions (T6) recompute vRA themselves, and the shell
+    ** paying a looped >>6 plus a x6 for every op was pure waste.
+    ** WARNING: several calls may realloc the stack and invalidate `ra' */
     lua_assert(v.base == v.ci->u.l.base);
     lua_assert(v.base <= L->top && L->top < L->stack + L->stacksize);
     vmdispatch (GET_OPCODE(i)) {
@@ -855,8 +863,11 @@ void luaV_execute (lua_State *L) {
       )
       vmcase(OP_LOADKX,
         TValue *rb;
+        Instruction ix;  /* P8_BYTEDECODE: GETARG_* args must not side-effect */
+        ra = RA(i);
         lua_assert(GET_OPCODE(*v.ci->u.l.savedpc) == OP_EXTRAARG);
-        rb = v.k + GETARG_Ax(*v.ci->u.l.savedpc++);
+        ix = *v.ci->u.l.savedpc++;
+        rb = v.k + GETARG_Ax(ix);
         setobj2s(L, ra, rb);
       )
       vmcase(OP_LOADBOOL,
@@ -887,6 +898,7 @@ void luaV_execute (lua_State *L) {
         int b = GETARG_B(i);
         int c = GETARG_C(i);
         Table *t = luaH_new(L);
+        ra = RA(i);
         sethvalue(L, ra, t);
         if (b != 0 || c != 0)
           luaH_resize(L, t, luaO_fb2int(b), luaO_fb2int(c));
@@ -894,6 +906,7 @@ void luaV_execute (lua_State *L) {
       )
       vmcase(OP_SELF,
         StkId rb = RB(i);
+        ra = RA(i);
         setobjs2s(L, ra+1, rb);
         Protect(luaV_gettable(L, rb, RKC(i), ra));
       )
@@ -960,9 +973,11 @@ void luaV_execute (lua_State *L) {
       vmcase(OP_NOT,
         TValue *rb = RB(i);
         int res = l_isfalse(rb);  /* next assignment may change this value */
+        ra = RA(i);
         setbvalue(ra, res);
       )
       vmcase(OP_LEN,
+        ra = RA(i);
         Protect(luaV_objlen(L, ra, RB(i)));
       )
       vmcase(OP_CONCAT,
@@ -998,6 +1013,7 @@ void luaV_execute (lua_State *L) {
       vmcase(OP_CALL,
         int b = GETARG_B(i);
         int nresults = GETARG_C(i) - 1;
+        ra = RA(i);
         if (b != 0) L->top = ra+b;  /* else previous instruction set top */
         if (luaD_precall(L, ra, nresults)) {  /* C function? */
           if (nresults >= 0) L->top = v.ci->top;  /* adjust results */
@@ -1011,6 +1027,7 @@ void luaV_execute (lua_State *L) {
       )
       vmcase(OP_TAILCALL,
         int b = GETARG_B(i);
+        ra = RA(i);
         if (b != 0) L->top = ra+b;  /* else previous instruction set top */
         lua_assert(GETARG_C(i) - 1 == LUA_MULTRET);
         if (luaD_precall(L, ra, LUA_MULTRET))  /* C function? */
@@ -1040,6 +1057,7 @@ void luaV_execute (lua_State *L) {
       )
       vmcasenb(OP_RETURN,
         int b = GETARG_B(i);
+        ra = RA(i);
         if (b != 0) L->top = ra+b-1;
         if (v.cl->p->sizep > 0) luaF_close(L, v.base);
         b = luaD_poscall(L, ra);
@@ -1054,7 +1072,9 @@ void luaV_execute (lua_State *L) {
         }
       )
       vmcase(OP_FORLOOP,
-        lua_Number step = nvalue(ra+2);
+        lua_Number step;
+        ra = RA(i);
+        step = nvalue(ra+2);
         lua_Number idx = luai_numadd(L, (lua_Number)nvalue(ra), step); /* increment index */
         lua_Number limit = nvalue(ra+1);
         /* check for idx sign wrap-around */
@@ -1086,10 +1106,13 @@ void luaV_execute (lua_State *L) {
         int c = GETARG_C(i);
         int last;
         Table *h;
+        ra = RA(i);
         if (n == 0) n = cast_int(L->top - ra) - 1;
         if (c == 0) {
+          Instruction ix;  /* P8_BYTEDECODE: no side effects in GETARG args */
           lua_assert(GET_OPCODE(*v.ci->u.l.savedpc) == OP_EXTRAARG);
-          c = GETARG_Ax(*v.ci->u.l.savedpc++);
+          ix = *v.ci->u.l.savedpc++;
+          c = GETARG_Ax(ix);
         }
         luai_runtimecheck(L, ttistable(ra));
         h = hvalue(ra);
@@ -1106,6 +1129,7 @@ void luaV_execute (lua_State *L) {
       vmcase(OP_CLOSURE,
         Proto *p = v.cl->p->p[GETARG_Bx(i)];
         Closure *ncl = getcached(p, v.cl->upvals, v.base);  /* cached closure */
+        ra = RA(i);
         if (ncl == NULL)  /* no match? */
           pushclosure(L, p, v.cl->upvals, v.base, ra);  /* create a new one */
         else
@@ -1116,6 +1140,7 @@ void luaV_execute (lua_State *L) {
         int b = GETARG_B(i) - 1;
         int j;
         int n = cast_int(v.base - v.ci->func) - v.cl->p->numparams - 1;
+        ra = RA(i);
         if (b < 0) {  /* B == 0? */
           b = n;  /* get all var. arguments */
           Protect(luaD_checkstack(L, n));

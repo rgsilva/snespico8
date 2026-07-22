@@ -95,6 +95,10 @@ Divergences and dark corners are pinned by test vectors, not folklore:
 - `rnd`/`srand` match real PICO-8 draws byte-for-byte on seeded streams
   (see INTERNALS.md); the raw state words at $5F44/$5F48 are held in a
   different-but-equivalent arrangement.
+- Debug hooks are compiled out of the SNES build (the per-op hookmask
+  test was measurable VM overhead): `debug.sethook` sets state the VM
+  never reads, so hooks silently never fire. Real PICO-8 exposes no
+  hook path at all, so no cart can observe the difference.
 - One genuinely open corner: `tostr`'s 4-decimal display boundary. Real
   PICO-8's evidence is contradictory at the edges (raw `0xffff` displays
   as "1", demanding rounding; raw `6` displays as "0", demanding

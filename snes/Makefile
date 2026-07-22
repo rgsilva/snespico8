@@ -26,10 +26,18 @@ P8OPT ?= -O0
 # (1,187 call sites in lua_lvm.lst alone, 14 cycles of pure call overhead
 # each, ~5 of them on the VM dispatch path per op). Disabling trades ROM
 # size for cycles everywhere; measured on bench_tab (docs/M9-perf-plan.md).
+# P8_BYTEDECODE: byte-wise instruction-field decode (lopcodes.h) -- Calypsi
+# lowers 32-bit constant shifts as counted loops. P8_NO_HOOKS: the per-op
+# debug-hook test compiles out (no sethook path on a cart; pinned in
+# docs/COMPATIBILITY.md). P8EXTRA: per-target extras (release/play pass
+# -DP8_NO_VMOPS to drop the per-op mailbox counter; bench/parity need it).
+P8EXTRA ?=
 P8CFLAGS = --core=65816 --target=snes --code-model=large --data-model=large \
            --no-ppu-mul --no-cross-call --no-interprocedural-cross-jump \
            $(P8OPT) -I $(CORE) -I . \
-           -DP8_VMOPS_ADDR=0x7ef00cul -DP8_HWMATH --list-file=$(@:.o=.lst)
+           -DP8_BYTEDECODE -DP8_NO_HOOKS \
+           -DP8_VMOPS_ADDR=0x7ef00cul -DP8_HWMATH --list-file=$(@:.o=.lst) \
+           $(P8EXTRA)
 LUAOBJS := lapi lauxlib lbaselib lcode lctype lcorolib ldebug ldo ldump \
            lfunc lgc llex lmem lobject lopcodes lparser lstate lstring \
            ltable ltm lundump lvm lzio lpico8lib
@@ -283,7 +291,9 @@ demo:
 # in Mesen (or on hardware) and drive it with a controller.
 .PHONY: play
 play:
-	$(MAKE) p8 CART="$(PLAYCART)" FRAMES=1000000000
+	rm -f $(BUILD)/p8obj/lua_lvm.o
+	$(MAKE) p8 CART="$(PLAYCART)" FRAMES=1000000000 P8EXTRA=-DP8_NO_VMOPS
+	rm -f $(BUILD)/p8obj/lua_lvm.o
 	@echo "==> Interactive ROM at $(BUILD)/p8.sfc -- open in Mesen and drive it with a pad."
 
 # M8: bundle several carts into build/cart_multi.h and build the menu ROM
@@ -331,7 +341,9 @@ test-demo:
 RELEASEROM ?= $(BUILD)/snespico8.sfc
 .PHONY: release
 release:
-	$(MAKE) demo-rom
+	rm -f $(BUILD)/p8obj/lua_lvm.o
+	$(MAKE) demo-rom P8EXTRA=-DP8_NO_VMOPS
+	rm -f $(BUILD)/p8obj/lua_lvm.o
 	cp $(BUILD)/p8.sfc $(RELEASEROM)
 	@echo "==> Release ROM: $(RELEASEROM)"
 	@echo "    Free public build: snespico8 runtime + our own demo carts."

@@ -86,27 +86,66 @@ enum OpMode {iABC, iABx, iAsBx, iAx};  /* basic instruction format */
 ** the following macros help to manipulate instructions
 */
 
+#if defined(P8_BYTEDECODE)
+/* M9 T7: Calypsi lowers 32-bit constant shifts as counted lsr/ror
+** loops (a >>14 field extract costs ~150 cycles), so the SNES build
+** decodes instruction fields byte-wise. Little-endian bytes b0..b3:
+** OP = b0[0:5], A = b0[6:7]+b1[0:5], C = b1[6:7]+b2[0:6],
+** B = b2[7]+b3, Bx = C..B, Ax = A..B. The Bx/Ax forms keep only the
+** low 16 result bits -- exactly what the portable cast(int,...) keeps
+** on this 16-bit-int target (lcode caps emitted values at MAX_INT, so
+** the dropped bits are always zero in real code). Get-forms only; the
+** SET/CREATE forms below stay portable (parse-time cost). The host
+** build keeps the portable shifts, and parity pins the two decoders
+** against each other on every vector.
+** p8i_b evaluates `i' more than once: the argument must be a simple
+** lvalue with no side effects (no *pc++ -- hoist into a local). */
+#define p8i_b(i,n)	((unsigned int)((const unsigned char *)&(i))[n])
+#define GET_OPCODE(i)	(cast(OpCode, p8i_b(i,0) & 0x3Fu))
+#define GETARG_A(i)	(cast(int, (p8i_b(i,0) >> 6) | ((p8i_b(i,1) & 0x3Fu) << 2)))
+#define GETARG_C(i)	(cast(int, (p8i_b(i,1) >> 6) | ((p8i_b(i,2) & 0x7Fu) << 2)))
+#define GETARG_B(i)	(cast(int, (p8i_b(i,2) >> 7) | (p8i_b(i,3) << 1)))
+#if LUAI_BITSINT >= 32
+/* host equivalence build: int holds the full 18/26-bit fields, and
+** lcode emits them full-width (jumps biased by the 18-bit MAXARG_sBx),
+** so decode full-width -- the masked forms below would break every
+** jump on a 32-bit-int build. */
+#define GETARG_Bx(i)	(cast(int, (p8i_b(i,1) >> 6) | (p8i_b(i,2) << 2) | \
+	(p8i_b(i,3) << 10)))
+#define GETARG_Ax(i)	(cast(int, (p8i_b(i,0) >> 6) | (p8i_b(i,1) << 2) | \
+	(p8i_b(i,2) << 10) | (p8i_b(i,3) << 18)))
+#else
+/* 16-bit-int target: keep only the low 16 result bits, exactly what
+** the portable cast(int,...) keeps here. GETARG_sBx then recovers
+** jump offsets by 16-bit two's-complement wraparound of the
+** Bx - MAXARG_sBx subtraction, same as the portable form does. */
+#define GETARG_Bx(i)	(cast(int, (p8i_b(i,1) >> 6) | (p8i_b(i,2) << 2) | \
+	((p8i_b(i,3) & 0x3Fu) << 10)))
+#define GETARG_Ax(i)	(cast(int, (p8i_b(i,0) >> 6) | (p8i_b(i,1) << 2) | \
+	((p8i_b(i,2) & 0x3Fu) << 10)))
+#endif
+#else
 #define GET_OPCODE(i)	(cast(OpCode, ((i)>>POS_OP) & MASK1(SIZE_OP,0)))
+
+#define getarg(i,pos,size)	(cast(int, ((i)>>pos) & MASK1(size,0)))
+
+#define GETARG_A(i)	getarg(i, POS_A, SIZE_A)
+#define GETARG_B(i)	getarg(i, POS_B, SIZE_B)
+#define GETARG_C(i)	getarg(i, POS_C, SIZE_C)
+#define GETARG_Bx(i)	getarg(i, POS_Bx, SIZE_Bx)
+#define GETARG_Ax(i)	getarg(i, POS_Ax, SIZE_Ax)
+#endif
+
 #define SET_OPCODE(i,o)	((i) = (((i)&MASK0(SIZE_OP,POS_OP)) | \
 		((cast(Instruction, o)<<POS_OP)&MASK1(SIZE_OP,POS_OP))))
 
-#define getarg(i,pos,size)	(cast(int, ((i)>>pos) & MASK1(size,0)))
 #define setarg(i,v,pos,size)	((i) = (((i)&MASK0(size,pos)) | \
                 ((cast(Instruction, v)<<pos)&MASK1(size,pos))))
 
-#define GETARG_A(i)	getarg(i, POS_A, SIZE_A)
 #define SETARG_A(i,v)	setarg(i, v, POS_A, SIZE_A)
-
-#define GETARG_B(i)	getarg(i, POS_B, SIZE_B)
 #define SETARG_B(i,v)	setarg(i, v, POS_B, SIZE_B)
-
-#define GETARG_C(i)	getarg(i, POS_C, SIZE_C)
 #define SETARG_C(i,v)	setarg(i, v, POS_C, SIZE_C)
-
-#define GETARG_Bx(i)	getarg(i, POS_Bx, SIZE_Bx)
 #define SETARG_Bx(i,v)	setarg(i, v, POS_Bx, SIZE_Bx)
-
-#define GETARG_Ax(i)	getarg(i, POS_Ax, SIZE_Ax)
 #define SETARG_Ax(i,v)	setarg(i, v, POS_Ax, SIZE_Ax)
 
 #define GETARG_sBx(i)	(GETARG_Bx(i)-MAXARG_sBx)
