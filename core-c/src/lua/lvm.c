@@ -648,6 +648,61 @@ static void name (VMCtx *v, Instruction i) { \
   else { StkId ra = vRA(i); ProtectV(luaV_arith(L, ra, rb, rb, tm)); } \
 }
 
+static void vmop_move (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  setobjs2s(L, vRA(i), vRB(i));
+}
+static void vmop_loadk (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  TValue *rb = v->k + GETARG_Bx(i);
+  setobj2s(L, vRA(i), rb);
+}
+static void vmop_loadbool (VMCtx *v, Instruction i) {
+  StkId ra = vRA(i);
+  setbvalue(ra, GETARG_B(i));
+  if (GETARG_C(i)) v->ci->u.l.savedpc++;  /* skip next instruction (if C) */
+}
+static void vmop_loadnil (VMCtx *v, Instruction i) {
+  StkId ra = vRA(i);
+  int b = GETARG_B(i);
+  do {
+    setnilvalue(ra++);
+  } while (b--);
+}
+static void vmop_getupval (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  int b = GETARG_B(i);
+  setobj2s(L, vRA(i), v->cl->upvals[b]->v);
+}
+static void vmop_gettabup (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  int b = GETARG_B(i);
+  StkId ra = vRA(i);
+  ProtectV(luaV_gettable(L, v->cl->upvals[b]->v, vRKC(i), ra));
+}
+static void vmop_gettable (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  StkId ra = vRA(i);
+  ProtectV(luaV_gettable(L, vRB(i), vRKC(i), ra));
+}
+static void vmop_settabup (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  int a = GETARG_A(i);
+  ProtectV(luaV_settable(L, v->cl->upvals[a]->v, vRKB(i), vRKC(i)));
+}
+static void vmop_setupval (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  StkId ra = vRA(i);
+  UpVal *uv = v->cl->upvals[GETARG_B(i)];
+  setobj(L, uv->v, ra);
+  luaC_barrier(L, uv, ra);
+}
+static void vmop_settable (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  StkId ra = vRA(i);
+  ProtectV(luaV_settable(L, ra, vRKB(i), vRKC(i)));
+}
+
 DEF_ARITH(vmop_add,  luai_numadd,  TM_ADD)
 DEF_ARITH(vmop_sub,  luai_numsub,  TM_SUB)
 DEF_ARITH(vmop_mul,  luai_nummul,  TM_MUL)
@@ -699,11 +754,10 @@ void luaV_execute (lua_State *L) {
     lua_assert(v.base <= L->top && L->top < L->stack + L->stacksize);
     vmdispatch (GET_OPCODE(i)) {
       vmcase(OP_MOVE,
-        setobjs2s(L, ra, RB(i));
+        vmop_move(&v, i);
       )
       vmcase(OP_LOADK,
-        TValue *rb = v.k + GETARG_Bx(i);
-        setobj2s(L, ra, rb);
+        vmop_loadk(&v, i);
       )
       vmcase(OP_LOADKX,
         TValue *rb;
@@ -712,37 +766,28 @@ void luaV_execute (lua_State *L) {
         setobj2s(L, ra, rb);
       )
       vmcase(OP_LOADBOOL,
-        setbvalue(ra, GETARG_B(i));
-        if (GETARG_C(i)) v.ci->u.l.savedpc++;  /* skip next instruction (if C) */
+        vmop_loadbool(&v, i);
       )
       vmcase(OP_LOADNIL,
-        int b = GETARG_B(i);
-        do {
-          setnilvalue(ra++);
-        } while (b--);
+        vmop_loadnil(&v, i);
       )
       vmcase(OP_GETUPVAL,
-        int b = GETARG_B(i);
-        setobj2s(L, ra, v.cl->upvals[b]->v);
+        vmop_getupval(&v, i);
       )
       vmcase(OP_GETTABUP,
-        int b = GETARG_B(i);
-        Protect(luaV_gettable(L, v.cl->upvals[b]->v, RKC(i), ra));
+        vmop_gettabup(&v, i);
       )
       vmcase(OP_GETTABLE,
-        Protect(luaV_gettable(L, RB(i), RKC(i), ra));
+        vmop_gettable(&v, i);
       )
       vmcase(OP_SETTABUP,
-        int a = GETARG_A(i);
-        Protect(luaV_settable(L, v.cl->upvals[a]->v, RKB(i), RKC(i)));
+        vmop_settabup(&v, i);
       )
       vmcase(OP_SETUPVAL,
-        UpVal *uv = v.cl->upvals[GETARG_B(i)];
-        setobj(L, uv->v, ra);
-        luaC_barrier(L, uv, ra);
+        vmop_setupval(&v, i);
       )
       vmcase(OP_SETTABLE,
-        Protect(luaV_settable(L, ra, RKB(i), RKC(i)));
+        vmop_settable(&v, i);
       )
       vmcase(OP_NEWTABLE,
         int b = GETARG_B(i);
