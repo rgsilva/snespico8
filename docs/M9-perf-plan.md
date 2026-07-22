@@ -1,7 +1,7 @@
 # M9 — performance plan
 
 Status: **T0–T6 landed — M9 complete — plus the T7 reevaluation
-addendum (see the T7 section at the end).** (Commits `ed0d85d..HEAD`;
+addendum (see the T7 section at the end).** (Commits `7f609e9..HEAD`;
 deferred polish lives in `FUTURE.md`: vblank pacing, DMA split, sprite
 row-blit, `--force-switch` parse experiment, flip-ceremony diet, `bugs/`
 reductions.) This document is the analysis, the plan, the validation
