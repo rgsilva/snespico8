@@ -13,7 +13,7 @@ milestone log with the full per-tier history):
 | VM, `all()` iteration (`bench_all`) | (T6-era: 380 ops/s) | **659** | T7 direct-table iterator |
 | VM, add-loop | 1,264 ops/s | **2,260** | T1/T2 + T7 |
 | VM, mul-loop | ~640 ops/s | **~1,286** | CPU multiplier + T7 |
-| Celeste parse (27 KB) | ~59 s | ~2x faster whole-boot (soak) | T7 side effect; parse itself unclaimed |
+| Celeste boot-to-title | ~65 s | **~21 s** (`P8BYTECODE=1`) | parse runs on the host at ROM build (T7 inc5); peak boot heap 102→61 KB |
 | ROM size | 512 KB | **512 KB** | was 256 after T2; T7's `--no-cross-call` trades it back for cycles |
 
 Numbers come from the live telemetry rig: the VM instruction counter counts
@@ -45,13 +45,15 @@ is a PC-sampling profiler folded through the link map.
   one screen-byte RMW on dp-resident state. The remaining fat is sprite
   pixels re-reading the sheet per pixel (`p8i_sheet_get`) — a row-blit
   that walks sheet bytes directly is designed but unclaimed.
-- **Celeste parse (~59 s)**: one-third of parse time is Calypsi runtime
-  helpers — `_ValueSwitch16` (the lexer/parser's switch dispatch; llex and
-  lparser are pinned -O0 by miscompiles #1/#2) and `_UDivMod32` (ltable's
-  `hashnum` mod during constant dedup; ltable is pinned -O0 by miscompile
-  #4, and a pow2-mask hash would change `pairs()` order and break z8lua
-  parity, so no). Candidate: `--force-switch` on the -O0 lexer — measured
-  never, promising, unclaimed.
+- **Celeste parse: optional since T7 inc5.** `P8BYTECODE=1` compiles the
+  cart on the host at ROM build time (target-shaped bytecode; the
+  console's `lua_load` autodetects it) — boot-to-title ~65 s → ~21 s,
+  and the parser's 40 KB working set never exists on the console. The
+  remaining ~21 s is undump + string interning + the cart's own `_init`.
+  For source-mode builds the old analysis stands (a third of parse time
+  in `_ValueSwitch16`/`_UDivMod32` helpers; `--force-switch` on the -O0
+  lexer remains the unmeasured candidate), but bytecode mode makes it
+  a curiosity rather than a lever.
 - **GC: a non-problem.** ~1% of host gameplay time. Deprioritized forever.
 
 ## What the ceiling means

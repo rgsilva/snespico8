@@ -49,10 +49,12 @@ call chains outright. Ranked by expected payoff x confidence:
   Walking sheet bytes directly (two pixels per read, flip-aware) is the
   designed-but-unclaimed T3 leftover; profile says it's the next gfx win
   for map-heavy carts (and exactly what Celeste's title draw does).
-- **`--force-switch` on the -O0 lexer/parser.** A third of Celeste's ~59 s
-  parse is `_ValueSwitch16` dispatch in llex/lparser (pinned -O0 by
-  miscompiles #1/#2). Calypsi can lower switches as jump tables without
-  raising the opt level. Never measured — the cheapest experiment here.
+- **`--force-switch` on the -O0 lexer/parser.** A third of source-mode
+  parse time is `_ValueSwitch16` dispatch in llex/lparser (pinned -O0
+  by miscompiles #1/#2); Calypsi can lower switches as jump tables
+  without raising the opt level. Never measured — but T7 inc5's
+  bytecode precompile (`P8BYTECODE=1`) already makes on-console parse
+  optional, so this only matters for source-mode ROMs now.
 - **Presentation polish:** vblank frame pacing once anything sustains
   30+ fps; splitting the 16 KB VRAM DMA across natural vblanks to kill
   the force-blank flicker (pure cosmetics, zero risk).

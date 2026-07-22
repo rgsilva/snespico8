@@ -1,6 +1,7 @@
 # M9 — performance plan
 
-Status: **T0–T6 all landed — M9 complete.** (Commits `ed0d85d..HEAD`;
+Status: **T0–T6 landed — M9 complete — plus the T7 reevaluation
+addendum (see the T7 section at the end).** (Commits `ed0d85d..HEAD`;
 deferred polish lives in `FUTURE.md`: vblank pacing, DMA split, sprite
 row-blit, `--force-switch` parse experiment, flip-ceremony diet, `bugs/`
 reductions.) This document is the analysis, the plan, the validation
@@ -280,6 +281,7 @@ costs that were never on either side of an A/B ledger.
 | 2 | byte-wise GETARG decode + shell `ra` sink + `P8_NO_HOOKS` (+ release ROMs drop the vmops counter) | 1,453 | +43.6% |
 | 3 | table/compare far-call diet + `ltable_get.c` split (`luaH_get` finally at -O2) | 1,737 | +71.6% |
 | 4 | direct-table `all()`/`foreach` step | bench_all: 380 → 659 (+73%) | tab: 1,736 (flat) |
+| 5 | host bytecode precompile (`P8BYTECODE=1`, opt-in) | celeste boot ~65 s → ~21 s (3.1×), boot heap 102→61 KB | — |
 
 The four overhead classes, with the evidence that found them:
 

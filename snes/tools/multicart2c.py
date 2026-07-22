@@ -10,7 +10,7 @@ import sys
 import os
 import io
 # parse_cart handles both .p8 text and .p8.png (it dispatches to p8png).
-from cart2c import parse_cart
+from cart2c import parse_cart, maybe_compile_lua, cchar
 
 
 def label(src):
@@ -31,7 +31,8 @@ def emit_bytes(f, name, data, as_char=False):
             % ("char" if as_char else "unsigned char", name, max(n, 1)))
     if data:
         for i in range(0, len(data), 16):
-            f.write("  " + ",".join(str(b) for b in data[i:i + 16]) + ",\n")
+            f.write("  " + ",".join(cchar(b) if as_char else str(b)
+                                    for b in data[i:i + 16]) + ",\n")
         if as_char:
             f.write("  0\n")
     else:
@@ -55,6 +56,7 @@ def main(out, srcs, frames=1000000000):
     metas = []
     for idx, src in enumerate(srcs):
         lua_b, gfx, gmap, gff, sfx, music = parse_cart(src)
+        lua_b, _ = maybe_compile_lua(lua_b)
         emit_bytes(f, "c%d_lua" % idx, list(lua_b), as_char=True)
         emit_bytes(f, "c%d_gfx" % idx, gfx)
         emit_bytes(f, "c%d_map" % idx, gmap)

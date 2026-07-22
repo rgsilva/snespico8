@@ -75,6 +75,20 @@ enum OpMode {iABC, iABx, iAsBx, iAx};  /* basic instruction format */
 #define MAXARG_B        ((1<<SIZE_B)-1)
 #define MAXARG_C        ((1<<SIZE_C)-1)
 
+#if defined(P8_XDUMP)
+/* M9 T7 step 5 (cross-dumper): emit code shaped for the 16-bit-int
+** target -- its MAX_INT (INT_MAX-2 = 32765) caps Bx/sBx/Ax and biases
+** sBx, so jump encodings and LOADKX thresholds match what the
+** console's own lcode would emit. Without this, host 18-bit jump
+** biases decode as garbage through the target's 16-bit truncation. */
+#undef MAXARG_Bx
+#undef MAXARG_sBx
+#undef MAXARG_Ax
+#define MAXARG_Bx	32765
+#define MAXARG_sBx	32765
+#define MAXARG_Ax	32765
+#endif
+
 
 /* creates a mask with `n' 1 bits at position `p' */
 #define MASK1(n,p)	((~((~(Instruction)0)<<(n)))<<(p))

@@ -101,9 +101,28 @@ FRAMES ?= 8
 PLAYCART ?= ../core-c/tests/carts/m7_input.p8
 # MENUCARTS = the carts the multi-cart menu/test-menu targets bundle.
 MENUCARTS ?= ../core-c/tests/carts/m7_input.p8 ../core-c/tests/carts/m6_demo.p8 ../core-c/tests/carts/m6_fx.p8 ../core-c/tests/carts/m3_boot.p8
+# M9 T7 step 5: P8BYTECODE=1 cross-compiles the cart's Lua on the host
+# (core-c's p8luac, target-shaped MAXARG + 2-byte int/size_t) and embeds
+# bytecode instead of source -- the console's lua_load autodetects the
+# binary signature, so zero target code changes; the on-SNES parse
+# becomes a lundump load. Gated host-side by tests/dumpvec.sh (23 carts
+# source-run == dump-run in hash mode) and on-target by snesparity run
+# with P8BYTECODE=1.
+P8BYTECODE ?=
+ifeq ($(P8BYTECODE),1)
+P8LUACBIN = ../core-c/build/xdump/p8luac
+CART2CENV = P8LUAC=$(P8LUACBIN)
+$(P8LUACBIN): FORCE
+	$(MAKE) -C ../core-c p8luac
+$(BUILD)/cart_hello.h: $(P8LUACBIN)
+$(BUILD)/cart_multi.h: $(P8LUACBIN)
+else
+CART2CENV =
+endif
+
 .PHONY: FORCE
 $(BUILD)/cart_hello.h: $(CART) tools/cart2c.py tools/p8png.py FORCE | $(BUILD)
-	python3 tools/cart2c.py $(CART) $@ $(FRAMES) $(INPUT)
+	$(CART2CENV) python3 tools/cart2c.py $(CART) $@ $(FRAMES) $(INPUT)
 
 # ---- M9 T2: per-TU optimization levels ------------------------------
 # The hot TUs (the plan's list: VM, tables, GC, strings, calls, fix32,
@@ -303,7 +322,7 @@ play:
 # (-DP8_MULTICART). p8main.c then boots a d-pad picker instead of one cart;
 # each pick runs in a fresh lua_State, Select returns to the list.
 $(BUILD)/cart_multi.h: tools/multicart2c.py tools/cart2c.py tools/p8png.py FORCE | $(BUILD)
-	python3 tools/multicart2c.py $@ $(MENUCARTS)
+	$(CART2CENV) python3 tools/multicart2c.py $@ $(MENUCARTS)
 
 .PHONY: menu test-menu
 menu: $(BUILD)/cart_multi.h

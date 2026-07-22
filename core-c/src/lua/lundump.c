@@ -54,6 +54,17 @@ static int LoadChar(LoadState* S)
  return x;
 }
 
+#ifdef P8_XDUMP
+/* host self-check build: read back the target-shaped (2-byte) widths
+** the P8_XDUMP ldump writes -- the SNES itself reads them natively */
+static int LoadInt(LoadState* S)
+{
+ short x;
+ LoadVar(S,x);
+ if (x<0) error(S,"corrupted");
+ return x;
+}
+#else
 static int LoadInt(LoadState* S)
 {
  int x;
@@ -61,6 +72,7 @@ static int LoadInt(LoadState* S)
  if (x<0) error(S,"corrupted");
  return x;
 }
+#endif
 
 static lua_Number LoadNumber(LoadState* S)
 {
@@ -72,7 +84,13 @@ static lua_Number LoadNumber(LoadState* S)
 static TString* LoadString(LoadState* S)
 {
  size_t size;
+#ifdef P8_XDUMP
+ unsigned short size16;
+ LoadVar(S,size16);
+ size=size16;
+#else
  LoadVar(S,size);
+#endif
  if (size==0)
   return NULL;
  else
@@ -153,7 +171,11 @@ static void LoadDebug(LoadState* S, Proto* f)
  n=LoadInt(S);
  f->lineinfo=luaM_newvector(S->L,n,int);
  f->sizelineinfo=n;
+#ifdef P8_XDUMP
+ for (i=0; i<n; i++) f->lineinfo[i]=LoadInt(S);
+#else
  LoadVector(S,f->lineinfo,n,sizeof(int));
+#endif
  n=LoadInt(S);
  f->locvars=luaM_newvector(S->L,n,LocVar);
  f->sizelocvars=n;
@@ -249,8 +271,13 @@ void luaU_header (lu_byte* h)
  *h++=cast_byte(VERSION);
  *h++=cast_byte(FORMAT);
  *h++=cast_byte(*(char*)&x);			/* endianness */
+#ifdef P8_XDUMP
+ *h++=2;					/* target int */
+ *h++=2;					/* target size_t */
+#else
  *h++=cast_byte(sizeof(int));
  *h++=cast_byte(sizeof(size_t));
+#endif
  *h++=cast_byte(sizeof(Instruction));
  *h++=cast_byte(sizeof(lua_Number));
  *h++=cast_byte(((lua_Number)0.5)==0);		/* is lua_Number integral? */

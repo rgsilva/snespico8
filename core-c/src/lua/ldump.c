@@ -42,10 +42,22 @@ static void DumpChar(int y, DumpState* D)
  DumpVar(x,D);
 }
 
+#ifdef P8_XDUMP
+/* M9 T7 step 5 cross-dumper: write the 16-bit-int target's widths so
+** the SNES's unmodified lundump reads the chunk natively. Counts that
+** cannot fit poison the dump status instead of truncating. */
+static void DumpInt(int x, DumpState* D)
+{
+ short s=(short)x;
+ if ((int)s!=x) D->status=LUA_ERRSYNTAX;	/* exceeds target int */
+ DumpVar(s,D);
+}
+#else
 static void DumpInt(int x, DumpState* D)
 {
  DumpVar(x,D);
 }
+#endif
 
 static void DumpNumber(lua_Number x, DumpState* D)
 {
@@ -58,6 +70,25 @@ static void DumpVector(const void* b, int n, size_t size, DumpState* D)
  DumpMem(b,n,size,D);
 }
 
+#ifdef P8_XDUMP
+static void DumpString(const TString* s, DumpState* D)
+{
+ /* target size_t is 2 bytes */
+ unsigned short size;
+ if (s==NULL)
+ {
+  size=0;
+  DumpVar(size,D);
+ }
+ else
+ {
+  if (s->tsv.len+1>0xFFFFu) D->status=LUA_ERRSYNTAX;
+  size=(unsigned short)(s->tsv.len+1);	/* include trailing '\0' */
+  DumpVar(size,D);
+  DumpBlock(getstr(s),(size_t)size*sizeof(char),D);
+ }
+}
+#else
 static void DumpString(const TString* s, DumpState* D)
 {
  if (s==NULL)
@@ -72,6 +103,7 @@ static void DumpString(const TString* s, DumpState* D)
   DumpBlock(getstr(s),size*sizeof(char),D);
  }
 }
+#endif
 
 #define DumpCode(f,D)	 DumpVector(f->code,f->sizecode,sizeof(Instruction),D)
 
@@ -122,7 +154,11 @@ static void DumpDebug(const Proto* f, DumpState* D)
  int i,n;
  DumpString((D->strip) ? NULL : f->source,D);
  n= (D->strip) ? 0 : f->sizelineinfo;
+#ifdef P8_XDUMP
+ { int j; DumpInt(n,D); for (j=0; j<n; j++) DumpInt(f->lineinfo[j],D); }
+#else
  DumpVector(f->lineinfo,n,sizeof(int),D);
+#endif
  n= (D->strip) ? 0 : f->sizelocvars;
  DumpInt(n,D);
  for (i=0; i<n; i++)

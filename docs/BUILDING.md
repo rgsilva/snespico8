@@ -111,6 +111,15 @@ names in the menu come from the file names. The generic `p8` target
 underneath takes `CART=…` and `FRAMES=…` (how many game frames the loop
 runs — the play/menu targets set it effectively-infinite).
 
+Add `P8BYTECODE=1` to any of those to precompile the cart's Lua on the
+host at build time and embed bytecode instead of source — the console
+then skips its own parse entirely (Celeste's ~65 s of boot-time parsing
+drops to a couple of seconds of loading). The cross-compiler
+(`core-c`'s `p8luac`) emits exactly the code shape the console's own
+compiler would, and `tests/dumpvec.sh` plus the parity suite hold the
+two paths bit-identical. Source mode stays the default so the on-console
+parser keeps its test coverage.
+
 What to expect at today's speeds — and which APIs exist — is in
 [COMPATIBILITY.md](COMPATIBILITY.md). Mind licensing if you rebundle:
 carts you didn't write stay on your machine unless their license says

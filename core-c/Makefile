@@ -51,17 +51,48 @@ $(BUILD)/runp8: $(BUILD)/runp8.o $(BUILD)/p8.o $(BUILD)/p8gfx.o $(BUILD)/p8audio
 test: $(BUILD)/runp8
 	$(BUILD)/runp8 tests/carts/m1_hello.p8 -n 3 -p $(BUILD)/m1_hello.ppm
 
+# M9 T7 step 5: the cross-dumper. Same sources built -DP8_XDUMP: lcode
+# caps at the 16-bit target's MAX_INT (32765) so jump biases and LOADKX
+# thresholds match the console's own compiler, ldump writes 2-byte
+# int/size_t so the SNES's unmodified lundump reads the chunk natively,
+# and the tool can reload its own dumps (-b) for the dumpvec gate.
+XDUMPDIR = $(BUILD)/xdump
+XCFLAGS = $(CFLAGS) -DP8_XDUMP
+XLUA_OBJS = $(addprefix $(XDUMPDIR)/lua_,$(addsuffix .o,$(LUA)))
+
+$(XDUMPDIR):
+	mkdir -p $(XDUMPDIR)
+
+$(XDUMPDIR)/lua_%.o: src/lua/%.c | $(XDUMPDIR)
+	$(CC) $(XCFLAGS) -c -o $@ $<
+
+$(XDUMPDIR)/p8heap.o: ../snes/p8heap.c ../snes/p8heap.h | $(XDUMPDIR)
+	$(CC) $(XCFLAGS) -I../snes -c -o $@ $<
+
+$(XDUMPDIR)/%.o: src/%.c src/p8.h | $(XDUMPDIR)
+	$(CC) $(XCFLAGS) -c -o $@ $<
+
+$(XDUMPDIR)/p8luac: $(XDUMPDIR)/runp8.o $(XDUMPDIR)/p8.o $(XDUMPDIR)/p8gfx.o $(XDUMPDIR)/p8audio.o $(XDUMPDIR)/p8num.o $(XDUMPDIR)/p8heap.o $(XLUA_OBJS)
+	$(CC) -o $@ $^ -lm
+
+.PHONY: p8luac dumpvec
+p8luac: $(XDUMPDIR)/p8luac
+
+dumpvec: $(BUILD)/runp8 $(XDUMPDIR)/p8luac
+	bash tests/dumpvec.sh
+
 # Full host suite, run locally on the same platform the SNES build is
 # validated against (macOS here). Diffs the language vectors against the
 # z8lua oracle (../tools/z8lua/z8lua) and the gfx/audio goldens. Excludes
 # suites needing gitignored bits: celeste (BBS cart), realvec (real PICO-8),
 # snesparity (Calypsi + Mesen).
-check: $(BUILD)/runp8
+check: $(BUILD)/runp8 $(XDUMPDIR)/p8luac
 	bash tests/numvec.sh
 	bash tests/dialectvec.sh
 	bash tests/libvec.sh
 	bash tests/gfxvec.sh
 	bash tests/audiovec.sh
+	bash tests/dumpvec.sh
 
 # The subset that is deterministic across host compilers -- what CI runs.
 # libvec is left out: it probes sin/cos at their extremes, where z8lua

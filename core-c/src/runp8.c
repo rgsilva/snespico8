@@ -10,12 +10,24 @@
 /* strdup() is POSIX, which gcc hides under strict -std=c99 (clang exposes it);
 ** runp8 is host-only, never Calypsi-compiled, so a POSIX feature macro is fine */
 #define _POSIX_C_SOURCE 200809L
+#ifdef P8_XDUMP
+/* p8luac build (M9 T7 step 5): same binary gains -c (cross-dump the
+** compiled cart to target-shaped bytecode) and -b (run from such a
+** dump instead of source -- the dumpvec gate). Internals are needed
+** for luaU_dump with strip control. */
+#define LUA_CORE
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "p8.h"
 #include "lua/lauxlib.h"
 #include "lua/lualib.h"
+#ifdef P8_XDUMP
+#include "lua/lobject.h"
+#include "lua/lstate.h"
+#include "lua/lundump.h"
+#endif
 
 extern unsigned long p8_vmops;  /* lvm.c, M1.5 measurement */
 
@@ -321,6 +333,14 @@ static void build_measure_heap(void)
     p8heap_add_region(pool + (size_t)i * (win + gap), (unsigned long)win);
 }
 
+#ifdef P8_XDUMP
+static int dump_writer(lua_State *L, const void *b, size_t sz, void *ud)
+{
+  (void)L;
+  return fwrite(b, 1, sz, (FILE *)ud) != sz;
+}
+#endif
+
 int main(int argc, char **argv)
 {
   const char *cart = NULL, *inputs = NULL, *ppm = NULL;
@@ -328,9 +348,18 @@ int main(int argc, char **argv)
   FILE *inf = NULL;
   char *src;
   lua_State *L;
+#ifdef P8_XDUMP
+  const char *dumpout = NULL, *binin = NULL;
+  char *bin = NULL;
+  long binlen = 0;
+#endif
 
   for (i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "-n") && i + 1 < argc) nframes = atoi(argv[++i]);
+#ifdef P8_XDUMP
+    else if (!strcmp(argv[i], "-c") && i + 1 < argc) dumpout = argv[++i];
+    else if (!strcmp(argv[i], "-b") && i + 1 < argc) binin = argv[++i];
+#endif
     else if (!strcmp(argv[i], "-i") && i + 1 < argc) inputs = argv[++i];
     else if (!strcmp(argv[i], "-p") && i + 1 < argc) ppm = argv[++i];
     else if (!strcmp(argv[i], "-H")) hash_mode = 1;
@@ -380,10 +409,44 @@ int main(int argc, char **argv)
   p8_set_audio_cmd(audio_cmd_trace);
   p8_set_audio_note(audio_note_trace);
 
+#ifdef P8_XDUMP
+  if (binin) {
+    FILE *bf = fopen(binin, "rb");
+    if (!bf) { fprintf(stderr, "p8luac: cannot open %s\n", binin); return 2; }
+    fseek(bf, 0, SEEK_END);
+    binlen = ftell(bf);
+    fseek(bf, 0, SEEK_SET);
+    bin = (char *)malloc((size_t)binlen);
+    if (fread(bin, 1, (size_t)binlen, bf) != (size_t)binlen) {
+      fprintf(stderr, "p8luac: short read on %s\n", binin);
+      return 2;
+    }
+    fclose(bf);
+  }
+  if (bin ? luaL_loadbuffer(L, bin, (size_t)binlen, cart) != LUA_OK
+          : luaL_loadbuffer(L, src, strlen(src), cart) != LUA_OK) {
+    fprintf(stderr, "runp8: parse error: %s\n", lua_tostring(L, -1));
+    return 3;
+  }
+  if (dumpout) {
+    FILE *df = fopen(dumpout, "wb");
+    int st;
+    if (!df) { fprintf(stderr, "p8luac: cannot write %s\n", dumpout); return 2; }
+    st = luaU_dump(L, getproto(L->top - 1), dump_writer, df, 1 /* strip */);
+    if (fclose(df) != 0 || st != 0) {
+      fprintf(stderr, "p8luac: dump failed (%d)\n", st);
+      remove(dumpout);
+      return 3;
+    }
+    printf("p8luac: %s -> %s\n", cart, dumpout);
+    return 0;
+  }
+#else
   if (luaL_loadbuffer(L, src, strlen(src), cart) != LUA_OK) {
     fprintf(stderr, "runp8: parse error: %s\n", lua_tostring(L, -1));
     return 3;
   }
+#endif
   if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
     fprintf(stderr, "runp8: cart main chunk: %s\n", lua_tostring(L, -1));
     return 3;
