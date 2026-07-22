@@ -140,4 +140,32 @@ for k=-6,6 do
 end
 printh("stridx4 s[k]==sub(s,k,k) all k")
 
+-- all()/foreach step semantics, incl. mutation during iteration
+-- (M9 T7 pins the direct-table iterator rewrite against the console)
+local it = {1,2,3,4,5}
+local acc = ""
+for v in all(it) do acc = acc..tostr(v) end
+printh("all1 "..acc)
+acc = ""
+for v in all(it) do
+ if v == 2 then del(it, 2) end -- delete the current element mid-loop
+ acc = acc..tostr(v)
+end
+printh("all2 "..acc.." n="..tostr(#it))
+it = {1,2,3}
+acc = ""
+foreach(it, function(v)
+ acc = acc..tostr(v)
+ if v == 1 then del(it, 1) end
+end)
+printh("fe1 "..acc.." n="..tostr(#it))
+it = {}
+for v in all(it) do acc = "never" end
+printh("all3 empty ok")
+it = {1,2,3}
+it[2] = nil -- hole: all() skips nils but still reaches 3
+acc = ""
+for v in all(it) do acc = acc..tostr(v) end
+printh("all4 "..acc)
+
 printh("realvec-end")

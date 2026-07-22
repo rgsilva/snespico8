@@ -2,12 +2,24 @@
 ** (cls/pset/pget/color/camera/clip/flip/btn/printh/time).
 ** Semantics notes are tagged VERIFY where the behavior must be pinned
 ** against real PICO-8 by the vector suite (M1 goldens). */
+/* M9 T7: all()/foreach step with raw Table access (TFORCALL is 17% of
+** celeste gameplay ops; the API-layer iterator paid a rawlen binary
+** search + rawgeti/rawequal ceremony + toint/fromint far calls per
+** element). This file is part of the runtime core, so it may see the
+** internals; LUA_CORE must precede the first lua include (p8.h). */
+#define LUA_CORE
 #include <stdio.h>
 #include <string.h>
 #include "p8.h"
 #include "p8num.h"
 #include "p8int.h"
 #include "lua/lauxlib.h"
+#include "lua/lobject.h"
+#include "lua/lstate.h"
+#include "lua/lapi.h"
+#include "lua/lgc.h"
+#include "lua/ltable.h"
+#include "lua/lvm.h"
 
 #ifndef __CALYPSI__
 uint8_t p8_ram[P8_RAM_SIZE];
@@ -480,22 +492,29 @@ static int api_deli(lua_State *L)
    VERIFY edge cases against real PICO-8. */
 static int all_iter(lua_State *L)
 {
-  long i = p8fix_toint((long)lua_tonumber(L, lua_upvalueindex(2)));
-  long n = (long)lua_rawlen(L, lua_upvalueindex(1));
-  lua_rawgeti(L, lua_upvalueindex(1), (int)i);
-  if (!lua_rawequal(L, -1, lua_upvalueindex(3)))
+  /* M9 T7: same algorithm as the API-layer version this replaces
+     (same probes, same comparisons, same deletion-revisit rule), on
+     the raw Table. upvalues: [0]=table (api_all guarantees it),
+     [1]=last index (always a number; only this function writes it),
+     [2]=last value seen. */
+  CClosure *cl = clCvalue(L->ci->func);
+  Table *t = hvalue(&cl->upvalue[0]);
+  long i = (long)luai_numasint(nvalue(&cl->upvalue[1]));
+  long n = (long)luaH_getn(t);
+  const TValue *slot = luaH_getint(t, (int)i);
+  if (!luaV_rawequalobj(slot, &cl->upvalue[2]))
     i--; /* current slot changed (deletion): revisit it */
-  lua_pop(L, 1);
   do {
     i++;
     if (i > n)
       return 0;
-    lua_rawgeti(L, lua_upvalueindex(1), (int)i);
-  } while (lua_isnil(L, -1));
-  lua_pushnumber(L, (lua_Number)p8fix_fromint(i));
-  lua_replace(L, lua_upvalueindex(2));
-  lua_pushvalue(L, -1);
-  lua_replace(L, lua_upvalueindex(3));
+    slot = luaH_getint(t, (int)i);
+  } while (ttisnil(slot));
+  setnvalue(&cl->upvalue[1], luai_int2num(i));
+  setobj(L, &cl->upvalue[2], slot);
+  luaC_barrier(L, obj2gco(cl), slot);  /* C-closure upvalue write */
+  setobj2s(L, L->top, slot);
+  api_incr_top(L);
   return 1;
 }
 
@@ -514,22 +533,39 @@ static int api_all(lua_State *L)
 
 static int api_foreach(lua_State *L)
 {
+  /* M9 T7: raw-Table walk with the SAME deletion-revisit rule as
+     all_iter. realvec caught the old linear walk diverging from the
+     console: PICO-8's foreach is all()-based, so deleting the current
+     element mid-callback must NOT skip its successor ("fe1 123", not
+     "13"). The last-seen value lives in stack slot 3 (normalized by
+     settop) so it stays GC-anchored across the callback; StkIds are
+     re-derived after every call because the stack may realloc. The
+     Table pointer itself is stable (5.2 GC does not move objects). */
   long i = 0, n;
+  Table *t;
   if (!lua_istable(L, 1))
     return 0;
-  n = (long)lua_rawlen(L, 1);
-  for (i = 1; i <= n; i++) {
-    lua_rawgeti(L, 1, (int)i);
-    if (lua_isnil(L, -1)) {
-      lua_pop(L, 1);
-      continue;
-    }
+  lua_settop(L, 3);  /* [t] [fn] [seen] (any stray 3rd arg is dead) */
+  setnilvalue(L->ci->func + 3);
+  t = hvalue(L->ci->func + 1);
+  for (;;) {
+    StkId seen = L->ci->func + 3;
+    const TValue *slot = luaH_getint(t, (int)i);
+    if (!luaV_rawequalobj(slot, seen))
+      i--; /* current slot changed (deletion): revisit it */
+    n = (long)luaH_getn(t); /* table may shrink during iteration */
+    do {
+      i++;
+      if (i > n)
+        return 0;
+      slot = luaH_getint(t, (int)i);
+    } while (ttisnil(slot));
+    setobj2s(L, seen, slot);
     lua_pushvalue(L, 2);
-    lua_insert(L, -2);
+    setobj2s(L, L->top, slot);
+    api_incr_top(L);
     lua_call(L, 1, 0);
-    n = (long)lua_rawlen(L, 1); /* table may shrink during iteration */
   }
-  return 0;
 }
 
 static int api_count(lua_State *L)
