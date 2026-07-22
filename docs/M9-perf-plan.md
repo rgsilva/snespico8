@@ -1,9 +1,8 @@
 # M9 — performance plan
 
-Status: **planned, not started**. This document is the analysis, the tiered
-optimization plan, and the validation strategy for M9. Nothing here is
-implemented yet; the baseline numbers below are the M3-era measurements plus
-a listing-level audit of what Calypsi actually generates today.
+Status: **in progress — T0 (measurement) landed.** This document is the
+analysis, the tiered optimization plan, the validation strategy, and the
+running results table for M9.
 
 ## Where the cycles go (the audit)
 
@@ -144,6 +143,51 @@ behind it:
 6. **Throughput regression:** re-run T0 after each landed step; keep the
    ops/sec + fps table in this file. Anything that doesn't pay gets backed
    out.
+
+## T0 baseline (measured 2026-07-21, all -O0)
+
+Infrastructure: `p8_vmops` now lives AT the `MB_VMOPS` mailbox slot
+(`P8_VMOPS_ADDR`, passed in `P8CFLAGS`) so `test/p8bench.lua` samples it
+live with no layout drift (the old bench read a `.bss` address that had
+already drifted). `make bench-{vm,draw,flip,api,celeste}` + `make prof`
+(PC-sampling profiler, `tools/profsym.py`); `tools/lstcheck.py` codegen
+fences run before every link. Mesen runs ~0.6x real time headless, so a
+bench costs ~2-8 min wall.
+
+| cart | metric | baseline |
+|------|--------|----------|
+| bench_vm | add-loop VM rate | **1,264 ops/s** (M3 continuity confirmed) |
+| bench_vm | mul-loop VM rate | ~620-670 ops/s |
+| bench_flip | game-frame, empty `_draw` | **~44 frames (~730 ms) → 1.37 fps ceiling** |
+| bench_draw | fills/lines/circles+print | ~0.23 fps |
+| demo_video (api) | | ~0.27 fps |
+| celeste | parse 27 KB | ~3,540 frames ≈ 59 s |
+| celeste | `_init` VM rate | ~330-400 ops/s (1,848 ops total) |
+| celeste | first title `_draw` | multi-minute C grind (full-screen `map()`), 0 flips in budget |
+| host (clang -O2) | GC share, gameplay | ~1% — negligible, GC tuning deprioritized |
+
+PC profiles (5,000 frames from reset, `make prof`):
+
+- **bench_flip: `expand_screen` = 91.6%** of the whole empty-draw loop
+  (~40 of the 44 frames; DMA 0.8%, per-frame Lua/C ceremony ~1 frame
+  total). The M0d "~10-frame flip" was the -O2 spike; the -O0 runtime
+  version costs ~4x that. T4 is the single biggest user-visible lever.
+- bench_vm: `luaV_execute` 43.3%, `expand_screen` 26.1% (post-compute
+  flip tail), `_Mul16`+`_Mul32` 18.0% (mul phase), `p8fix_add` 4.1%.
+- bench_draw: `p8i_shape_plot` 37.2%, `expand_screen` 16.2%,
+  `p8i_screen_set` 10.3%, `memset` (cls) 7.1%, `p8i_cam_x/y` 7.7%,
+  p8gfx static walkers ~7%, `_UDivMod32` 1.7% — T3's hoist list, verbatim.
+- celeste parse: `_UDivMod32` 12.6% (ltable `hashnum` mod during
+  constant dedup) + `_ValueSwitch16` 11.8% (llex/lparser switch dispatch)
+  + `_Mul32` 6.0% + `_Mul16` 2.3% ≈ **33% in Calypsi runtime helpers**;
+  rest is luaK/luaX/luaH/luaS machinery. llex/lparser stay -O0 (the known
+  miscompiles), but `--force-switch` on them at -O0 is a candidate
+  parse-time win; measure in T2. (A pow2-mask table hash would kill the
+  `_UDivMod32` but changes `pairs()` order → breaks z8lua parity. No.)
+- host celeste gameplay: table machinery dominates even on x86/ARM —
+  notably `all_iter` calls `lua_rawlen`→`luaH_getn` (binary search) per
+  iteration of every `all()`/`foreach` loop. Candidate pure-C win, but
+  only with oracle-exact iteration semantics; parked for T3-era.
 
 ## Honest ceiling
 

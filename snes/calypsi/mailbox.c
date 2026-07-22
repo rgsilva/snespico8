@@ -5,6 +5,8 @@ void mb_init(void)
   MB_WINDEX = 0;
   MB_IN_WINDEX = 0;
   MB_IN_RINDEX = 0;
+  MB_FLIPS = 0;
+  MB_VMOPS = 0;   /* lvm.c counts straight into this slot (P8_VMOPS_ADDR) */
   MB_STATUS = MB_STATUS_RUNNING;
   MB_MAGIC = MB_MAGIC_ALIVE;
 }

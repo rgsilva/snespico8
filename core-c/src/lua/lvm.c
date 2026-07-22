@@ -222,7 +222,15 @@ static int call_orderTM (lua_State *L, const TValue *p1, const TValue *p2,
 ** masked to 0x7fff, but standalone z8lua has no RAM attached at all) */
 #define PEEK(ram, address) ((ram) ? (ram)[(address) & 0xffffu] : 0)
 
-unsigned long p8_vmops;  /* snespico8: dispatched VM instructions */
+/* snespico8: dispatched-VM-instruction counter. SNES builds pass
+** P8_VMOPS_ADDR (the fixed MB_VMOPS mailbox slot, calypsi/mailbox.h) so
+** the counter lives at a link-layout-proof address the Mesen harness can
+** sample live mid-frame; host builds keep a plain variable. */
+#ifdef P8_VMOPS_ADDR
+#define p8_vmops (*(volatile __far unsigned long *)(P8_VMOPS_ADDR))
+#else
+unsigned long p8_vmops;
+#endif
 
 lua_Number luaV_peek(struct lua_State *L, lua_Number a, int count)
 {

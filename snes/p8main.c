@@ -27,7 +27,12 @@
 #include "cart_hello.h"
 #endif
 
-extern unsigned long p8_vmops; /* lvm.c instruction counter */
+/* lvm.c instruction counter; with P8_VMOPS_ADDR it lives at MB_VMOPS */
+#ifdef P8_VMOPS_ADDR
+#define p8_vmops (*(volatile __far unsigned long *)(P8_VMOPS_ADDR))
+#else
+extern unsigned long p8_vmops;
+#endif
 
 /* --- hardware register access (large data model = 24-bit pointers) --- */
 #define REG8(a)  (*(volatile uint8_t *)(unsigned long)(a))
@@ -150,7 +155,9 @@ static void snes_flip(void *ud)
   REG8(0x2100) = 0x0F;                  /* screen on, full brightness */
   /* TM ($212C) is driven per-scanline by the HDMA set up in video_init */
   MB_FLIPS = (uint16_t)p8_frame_count();
-  MB_VMOPS = p8_vmops;
+#ifndef P8_VMOPS_ADDR
+  MB_VMOPS = p8_vmops;   /* live-at-mailbox builds update it per op */
+#endif
 #ifdef P8_PARITY
   /* M4 parity: same two-region hash runp8 emits with -H. Gated because
      the 32 KB scan is slow at -O0 and would push the plain demo/boot ROM

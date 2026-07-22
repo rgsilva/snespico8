@@ -16,8 +16,14 @@ P8CC := $(P8CALDIR)/bin/cc65816
 P8AS := $(P8CALDIR)/bin/as65816
 P8LN := $(P8CALDIR)/bin/ln65816
 CORE := ../core-c/src
-P8CFLAGS := --core=65816 --target=snes --code-model=large --data-model=large \
-            --no-ppu-mul -O0 -I $(CORE) -I .
+# Recursive (=): --list-file expands per-target so every object gets a .lst
+# (the M9 codegen fences scan them). P8_VMOPS_ADDR pins the lvm.c op counter
+# at its fixed MB_VMOPS mailbox slot ($7E:F00C) so the bench harness samples
+# it live and link-layout changes can never move it.
+P8OPT ?= -O0
+P8CFLAGS = --core=65816 --target=snes --code-model=large --data-model=large \
+           --no-ppu-mul $(P8OPT) -I $(CORE) -I . \
+           -DP8_VMOPS_ADDR=0x7ef00cul --list-file=$(@:.o=.lst)
 LUAOBJS := lapi lauxlib lbaselib lcode lctype lcorolib ldebug ldo ldump \
            lfunc lgc llex lmem lobject lopcodes lparser lstate lstring \
            ltable ltm lundump lvm lzio lpico8lib
@@ -131,6 +137,7 @@ $(BUILD)/p8.raw: $(P8LUA_O) $(P8CORE_O) $(BUILD)/p8obj/p8main.o \
                  $(BUILD)/p8obj/p8heap.o $(BUILD)/p8obj/p8spc.o \
                  $(BUILD)/p8obj/stubs.o \
                  $(BUILD)/p8obj/mailbox.o $(BUILD)/p8obj/header.o
+	python3 tools/lstcheck.py $(BUILD)/p8obj
 	$(P8LN) -o $@ calypsi/linker.scm --output-format=raw --rtattr exit=simplified \
 	  $(P8CALDIR)/lib/clib-lc-ld-snes-noppu.a --list-file=$(BUILD)/p8.map $^
 
@@ -279,6 +286,36 @@ release:
 	@echo "==> Release ROM: $(RELEASEROM)"
 	@echo "    Free public build: snespico8 runtime + our own demo carts."
 	@echo "    Attach this to a GitHub release (see docs/PROJECT.md M14)."
+
+# ---- M9 T0: measurement --------------------------------------------
+# Each bench builds the default ROM around a cart and runs test/p8bench.lua,
+# which samples the live MB_VMOPS/MB_FLIPS mailbox counters once a second
+# (of emulated time) and prints per-window slopes; the baseline table lives
+# in docs/M9-perf-plan.md. FRAMES is huge: the script decides when to stop.
+BENCHCART ?= ../core-c/tests/carts/bench_vm.p8
+.PHONY: bench bench-vm bench-draw bench-flip bench-api bench-celeste prof
+bench:
+	$(MAKE) p8 CART=$(BENCHCART) FRAMES=1000000000
+	$(MESEN) --testrunner $(BUILD)/p8.sfc test/p8bench.lua
+
+bench-vm:
+	$(MAKE) bench BENCHCART=../core-c/tests/carts/bench_vm.p8
+bench-draw:
+	$(MAKE) bench BENCHCART=../core-c/tests/carts/bench_draw.p8
+bench-flip:
+	$(MAKE) bench BENCHCART=../core-c/tests/carts/bench_flip.p8
+bench-api:
+	$(MAKE) bench BENCHCART=../core-c/tests/carts/demo_video.p8
+bench-celeste:
+	$(MAKE) bench BENCHCART=../core-c/tests/carts-external/celeste.p8
+
+# PC-sampling profile of whatever ROM is in build/ (run right after a bench
+# target so the ROM matches): one emu.getState() PC sample per frame, then
+# tools/profsym.py folds the histogram through build/p8.map symbols.
+prof:
+	$(MESEN) --testrunner $(BUILD)/p8.sfc test/p8prof.lua | tee $(BUILD)/prof_raw.txt
+	cp $(BUILD)/p8.map $(BUILD)/prof.map   # static ?L numbers shift per build
+	python3 tools/profsym.py $(BUILD)/prof.map $(BUILD)/prof_raw.txt
 
 # M5c: boot Celeste Classic on the SNES. The cart is CC-BY-NC-SA and not
 # committed; fetch it first (same as core-c/tests/celeste.sh):
