@@ -127,22 +127,45 @@ static void video_init(void)
   }
 }
 
-/* expand PICO-8 screen ($7F:6000, 2px/byte) into M7BUF (tile-major 8bpp) */
+/* expand PICO-8 screen ($7F:6000, 2px/byte) into M7BUF (tile-major 8bpp).
+**
+** M9 T4: one 256-entry LUT lookup + 16-bit store per source byte (low
+** byte = left pixel, high = right; the little-endian store lands them
+** in order), with the row addressing hoisted out of the inner loop
+** (sr += 64 instead of a per-row multiply). The T0 profile put the old
+** per-nibble loop at 91.6% of the empty-draw game frame (~40 of ~44
+** frames); this collapses the whole transform to a table walk. The LUT
+** is const -> ROM, no boot-time build. */
+#define E1(i)  ((uint16_t)(((i) & 0x0F) | (((i) >> 4) << 8)))
+#define E16(i) E1(i),E1((i)+1),E1((i)+2),E1((i)+3),E1((i)+4),E1((i)+5),\
+               E1((i)+6),E1((i)+7),E1((i)+8),E1((i)+9),E1((i)+10),\
+               E1((i)+11),E1((i)+12),E1((i)+13),E1((i)+14),E1((i)+15)
+static const uint16_t expand_lut[256] = {
+  E16(0x00), E16(0x10), E16(0x20), E16(0x30), E16(0x40), E16(0x50),
+  E16(0x60), E16(0x70), E16(0x80), E16(0x90), E16(0xA0), E16(0xB0),
+  E16(0xC0), E16(0xD0), E16(0xE0), E16(0xF0),
+};
+#undef E16
+#undef E1
+
 static void expand_screen(void)
 {
   const uint8_t *src = p8_ram + 0x6000;
-  uint8_t *dst = M7BUF;
-  int ty, tx, r, b;
-  for (ty = 0; ty < 16; ty++)
-    for (tx = 0; tx < 16; tx++)
-      for (r = 0; r < 8; r++) {
-        const uint8_t *sr = src + ((ty * 8 + r) * 64) + (tx * 4);
-        for (b = 0; b < 4; b++) {
-          uint8_t byte = sr[b];
-          *dst++ = (uint8_t)(byte & 0x0F);        /* left pixel  */
-          *dst++ = (uint8_t)((byte >> 4) & 0x0F); /* right pixel */
-        }
+  uint16_t *dst = (uint16_t *)M7BUF;    /* even addresses only: aligned */
+  int ty, tx, r;
+  for (ty = 0; ty < 16; ty++) {
+    const uint8_t *trow = src + ty * 512;          /* 8 screen rows */
+    for (tx = 0; tx < 16; tx++) {
+      const uint8_t *sr = trow + tx * 4;
+      for (r = 0; r < 8; r++, sr += 64) {          /* sr == src + (ty*8+r)*64 + tx*4 */
+        dst[0] = expand_lut[sr[0]];
+        dst[1] = expand_lut[sr[1]];
+        dst[2] = expand_lut[sr[2]];
+        dst[3] = expand_lut[sr[3]];
+        dst += 4;
       }
+    }
+  }
 }
 
 /* flip hook: render the framebuffer and publish telemetry */

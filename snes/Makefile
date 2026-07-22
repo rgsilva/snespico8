@@ -331,7 +331,7 @@ BENCHCART ?= ../core-c/tests/carts/bench_vm.p8
 .PHONY: bench bench-vm bench-draw bench-flip bench-api bench-celeste prof
 bench:
 	$(MAKE) p8 CART=$(BENCHCART) FRAMES=1000000000
-	$(MESEN) --testrunner $(BUILD)/p8.sfc test/p8bench.lua
+	$(MESEN) --testrunner --timeout=900 $(BUILD)/p8.sfc test/p8bench.lua
 
 bench-vm:
 	$(MAKE) bench BENCHCART=../core-c/tests/carts/bench_vm.p8
@@ -349,7 +349,7 @@ bench-celeste:
 # target so the ROM matches): one emu.getState() PC sample per frame, then
 # tools/profsym.py folds the histogram through build/p8.map symbols.
 prof:
-	$(MESEN) --testrunner $(BUILD)/p8.sfc test/p8prof.lua | tee $(BUILD)/prof_raw.txt
+	$(MESEN) --testrunner --timeout=900 $(BUILD)/p8.sfc test/p8prof.lua | tee $(BUILD)/prof_raw.txt
 	cp $(BUILD)/p8.map $(BUILD)/prof.map   # static ?L numbers shift per build
 	python3 tools/profsym.py $(BUILD)/prof.map $(BUILD)/prof_raw.txt
 
