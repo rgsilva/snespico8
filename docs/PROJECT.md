@@ -457,9 +457,13 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
       512 → 256 KB; luaV_execute barely improves — Calypsi's optimizer
       gives up inside the giant switch body), T4 LUT flip expand
       (game-frame 44 → 11 frames, **fps ceiling 1.37 → ~5.5**), T3
-      draw-context snapshots (**draw carts ~3x**, demo_video 2.2x).
-      Remaining: T5 asm mul/div leaves (hardware $4202/$4204), T6
-      per-opcode VM split (promoted from contingency: the real VM lever).
+      draw-context snapshots (**draw carts ~3x**, demo_video 2.2x), T5
+      fix32 mul/div on the CPU hardware math units (**mul +38%**;
+      `make test-abmath` = on-target A/B vs the pure-C references, which
+      caught Calypsi miscompiles #5 (-O2 volatile deletion through
+      cast-constant pointers) and #6 (-O0 dropped truncation in casted
+      shifts) before they shipped). Remaining: T6 per-opcode VM split
+      (promoted from contingency: the real VM lever) + polish items.
 - [ ] M10: real hardware, stock SNES, flash cart
 - [ ] M11: SA-1 tier — 4x clock + 256 KB linear heap
 - [x] M12: **documentation pass** — `docs/BUILDING.md` (prerequisites + every

@@ -104,14 +104,15 @@ docs/     project brief, build guide, format + design notes
   installs Calypsi from its official release + builds WLA-DX). A `v*` tag
   publishes a release with `snespico8.sfc` attached; the CI ROM is
   byte-identical to a local `make -C snes release`.
-- **M9 (perf) in progress — T0–T4 landed** ([`docs/M9-perf-plan.md`](docs/M9-perf-plan.md)):
+- **M9 (perf) in progress — T0–T5 landed** ([`docs/M9-perf-plan.md`](docs/M9-perf-plan.md)):
   measurement rig (live mailbox telemetry, PC-sampling profiler, codegen
-  fences, differential fuzzer, perturbed-layout roulette battery), pure-C
-  fix32 wins, selective -O2 --speed on the hot TUs (a 4th Calypsi
-  miscompile found and pinned; ROM halved to 256 KB), a LUT flip path
-  (**fps ceiling 1.37 → ~5.5, 4x**), and per-shape draw-context snapshots
-  (**draw-bound carts ~3x**). The gates also caught and fixed two latent
-  never-terminating shift paths and a z8lua shift divergence. Remaining:
-  T5 (hardware mul/div leaves) and T6 (per-opcode VM split — the real VM
-  lever; Calypsi's optimizer gives up inside the giant interpreter body).
+  fences, differential fuzzer, perturbed-layout roulette battery, on-target
+  A/B ROM), pure-C fix32 wins, selective -O2 --speed on the hot TUs (ROM
+  halved to 256 KB), a LUT flip path (**fps ceiling 1.37 → ~5.5, 4x**),
+  per-shape draw-context snapshots (**draw-bound carts ~3x**), and fix32
+  mul/div on the CPU hardware math units (**mul +38%**). The gates caught
+  and fixed two latent never-terminating shift paths, a z8lua shift
+  divergence, and **three fresh Calypsi miscompiles** — none of it shipped.
+  Remaining: T6 (per-opcode VM split — the real VM lever; Calypsi's
+  optimizer gives up inside the giant interpreter body) + polish.
   Real-time Celeste stays M11 (SA-1).

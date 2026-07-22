@@ -1,15 +1,20 @@
 # M9 — performance plan
 
-Status: **T0–T4 landed** (measure, pure-C, selective -O2, gfx ctx, flip
-LUT — commits `ed0d85d..92d5568`). Remaining: T5 (asm mul/div leaves,
-hardware multiplier/divider) and T6 (per-opcode VM split — promoted from
-contingency to the real VM lever after T2's finding). This document is
-the analysis, the plan, the validation strategy, and the results table.
+Status: **T0–T5 landed** (measure, pure-C, selective -O2, gfx ctx, flip
+LUT, hardware math units — commits `ed0d85d..8109f0b`). Remaining: T6
+(per-opcode VM split — promoted from contingency to the real VM lever
+after T2's finding) and the deferred polish items (vblank frame pacing,
+DMA split, sprite row-blit, `--force-switch` parse experiment, `bugs/`
+reductions for the three new miscompiles). This document is the
+analysis, the plan, the validation strategy, and the results table.
 
-Cumulative so far: fps ceiling 1.37 → ~5.5 (4x), draw-bound carts ~3x,
-demo_video 20 → 43 flips (2.2x), VM +11% (1,264 → 1,399 ops/s), ROM
-halved to 256 KB, three latent bugs fixed (two never-terminating shift
-paths, one z8lua divergence), one new Calypsi miscompile documented.
+Cumulative: fps ceiling 1.37 → ~5.5 (4x), draw-bound carts ~3x,
+demo_video 20 → 43 flips (2.2x), VM add +11% and mul +38%, ROM halved
+to 256 KB, three latent core bugs fixed (two never-terminating shift
+paths, one z8lua divergence), **three new Calypsi miscompiles found and
+pinned by the M9 gates** (ltable -O1/-O2 allocation-size; -O2 volatile
+deletion through cast-constant pointers; -O0 dropped truncation in
+casted shifts inside 16-bit expressions).
 
 T1 notes: gains match the honest sizing (+8.7% VM — per-op arithmetic is
 a minority at ~2,100 cycles/op; T2 attacks the dispatch ceremony that
