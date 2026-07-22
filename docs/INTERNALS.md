@@ -90,6 +90,54 @@ every 8 KB HiROM SRAM window that answers a write-readback probe at boot
 around ~100 KB of live heap; `runp8 -M` predicted the window budget on host
 and the SNES agreed.
 
+## Bytecode carts: the host cross-dumper (`P8BYTECODE=1`)
+
+By default the console parses the cart's Lua itself (llex/lparser on the
+65816 — ~65 emulated seconds for Celeste's 27 KB, with the lexer pinned
+-O0 by two miscompiles). `P8BYTECODE=1` on any ROM target moves that
+parse to the build host: `cart2c.py` invokes **`p8luac`** — the same
+core sources built with `-DP8_XDUMP` — and embeds the resulting
+bytecode. The console side needed *zero changes*: `lua_load` has always
+dispatched on the binary signature byte, and `lundump` was always in the
+ROM. Celeste's boot-to-title drops to ~21 s (the remainder is undump,
+string interning and the cart's own `_init`).
+
+Cross-dumping for a 16-bit-int target from a 32-bit host is where the
+bodies are buried, and `P8_XDUMP` handles both classes:
+
+- **Code shape.** Lua encodes jumps in excess-K, where K is
+  `MAXARG_sBx` — which depends on the *compiler's* `int` width. Host
+  lcode would bias jumps by 131071; the console decodes `Bx` through
+  16-bit truncation and recovers offsets by two's-complement wraparound
+  of `Bx - MAXARG_sBx`, which only works when K matches its own
+  `MAX_INT` (32765, i.e. `INT_MAX-2`). So `P8_XDUMP` caps
+  `MAXARG_Bx/sBx/Ax` at 32765 (`lopcodes.h`): the dumper emits exactly
+  the instruction stream the console's own compiler would, LOADKX
+  spill thresholds included.
+- **Field widths.** The chunk format writes counts as native `int` and
+  string lengths as native `size_t`. Calypsi's are 2 bytes each (yes,
+  `size_t` is 16-bit — probed, and the reason `p8_reset` memsets in
+  chunks), so the `P8_XDUMP` ldump writes 2-byte ints and sizes, lies
+  accordingly in the header, and *poisons the dump status* on any count
+  that cannot fit rather than truncating. `Instruction` and
+  `lua_Number` are 4 bytes on both sides already. Dumps are stripped
+  (no lineinfo/locvars — see the COMPATIBILITY note on error messages).
+
+Two properties fall out for free. Allocation safety: an undump
+allocates each Proto vector at exactly the final size the parser would
+have grown it to, so the 8 KB-window single-allocation cap holds by
+construction — anything that parses also loads. And the parser's
+working set never exists: Celeste's peak boot heap drops from ~102 KB
+to ~61 KB, which is ~40 KB of extra headroom for bigger carts.
+
+The gate is `tests/dumpvec.sh` (part of `make check`): every test cart
+plus Celeste, run from source and from a cross-dump under `-H` hash
+mode — per-flip framebuffer and machine-RAM hashes must be
+byte-identical, so the encoder shape, the width shaping and undump
+semantics all sit under one diff. On target, the full snesparity suite
+re-runs with `P8BYTECODE=1`. Source mode stays the default build so the
+on-console parser keeps its coverage.
+
 ## Rendering: Mode 7 as a chunky framebuffer
 
 Mode 7 is the only SNES mode with a byte-per-pixel tile format, which makes

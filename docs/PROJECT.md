@@ -462,8 +462,20 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
       `make test-abmath` = on-target A/B vs the pure-C references, which
       caught Calypsi miscompiles #5 (-O2 volatile deletion through
       cast-constant pointers) and #6 (-O0 dropped truncation in casted
-      shifts) before they shipped). Remaining: T6 per-opcode VM split
-      (promoted from contingency: the real VM lever) + polish items.
+      shifts) before they shipped), T6 per-opcode VM split (landed and
+      settled it: +1.7% on a clean lvm-only A/B — the floor is memory,
+      not codegen; the split stays as the safer, per-op-optimizable
+      shape). **T7 reevaluation addendum (2026-07-22):** a listing-level
+      reread found ~1/3 of the op budget in overhead every earlier A/B
+      carried on both sides — cross-call factoring, counted-loop shift
+      lowering, dead shell work, far-call round-trips, iteration
+      ceremony. Five increments: **+72% gameplay-shaped VM**
+      (1,012 → 1,737 ops/s), all() iteration +73%, add 2,260 / mul
+      ~1,286 ops/s, two console-verified semantics fixes (str[pos],
+      foreach's deletion-revisit rule), and `P8BYTECODE=1` host
+      precompile (**Celeste boot ~65 s → ~21 s**, boot heap 102→61 KB,
+      zero target-code changes). ROM back to 512 KB as the cycles
+      trade. Full story: `docs/M9-perf-plan.md`, T7 section.
 - [ ] M10: real hardware, stock SNES, flash cart
 - [ ] M11: SA-1 tier — 4x clock + 256 KB linear heap
 - [x] M12: **documentation pass** — `docs/BUILDING.md` (prerequisites + every

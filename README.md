@@ -63,6 +63,16 @@ redistributable. To build a ROM around your own cart:
 cd snes && make play PLAYCART=path/to/cart.p8    # or .p8.png
 ```
 
+Add `P8BYTECODE=1` to any ROM target to precompile the cart's Lua on
+your machine at build time and embed bytecode instead of source — the
+console then skips its own parse (Celeste: ~65 s of boot becomes ~21 s,
+and the parser's 40 KB working set never exists on the SNES). The
+cross-compiler emits exactly the code the console's own compiler would,
+and the test net holds the two paths bit-identical; see
+[docs/BUILDING.md](docs/BUILDING.md) for the procedure and
+[docs/INTERNALS.md](docs/INTERNALS.md) for how a 32-bit host compiles
+for a 16-bit-int Lua.
+
 Prerequisites (Calypsi, WLA-DX, Mesen for the test suites) and every make
 target: [docs/BUILDING.md](docs/BUILDING.md).
 
@@ -94,14 +104,25 @@ tools/           third-party checkouts (Calypsi, z8lua, ...) — gitignored
 ## Status
 
 Milestones M0–M9 and M12–M14 are done: the core is oracle-exact, Celeste
-Classic boots to its title on the SNES, audio and input are real-time, CI
-builds the ROM, and the performance milestone closed at a 4x fps ceiling,
-3x draw carts, hardware mul +38%, half the ROM — with the honest finding
-that the VM on stock hardware is memory-bound (docs/PERF.md).
+Classic boots to its title on the SNES, audio and input are real-time,
+and CI builds the ROM. The performance milestone closed at a 4x fps
+ceiling and 3x draw carts, then its T7 reevaluation added +72% VM
+throughput, doubled the hardware-math loops, and made the on-console
+parse optional (build-time bytecode, 3x faster boot) — alongside the
+honest finding that what remains is memory-bound (docs/PERF.md).
 Real-hardware verification (M10) and the SA-1 tier (M11) are next.
 Everything so far is developed against the cycle-accurate
 [Mesen](https://www.mesen.ca/) — if you flash it to a cart, we'd love a
 report. Details: [docs/PROJECT.md](docs/PROJECT.md).
+
+## Built with AI, for fun
+
+This project was built with AI assistance (Anthropic's Claude), as an
+experiment in what a fantasy console and a 1990 game console can do
+together. It is a hobby project, provided **AS IS**, without warranty of
+any kind — if it bricks your flashcart, eats your save RAM, or offends
+your compiler, that's the fun you signed up for. Bug reports and
+real-hardware results are still very welcome.
 
 ## Legal & credits
 

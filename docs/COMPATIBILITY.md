@@ -99,6 +99,12 @@ Divergences and dark corners are pinned by test vectors, not folklore:
   test was measurable VM overhead): `debug.sethook` sets state the VM
   never reads, so hooks silently never fire. Real PICO-8 exposes no
   hook path at all, so no cart can observe the difference.
+- Bytecode ROMs (`P8BYTECODE=1`, see BUILDING.md) embed stripped
+  chunks: runtime error messages lose their source line numbers
+  (`cart:?` instead of `cart:123`). Program behavior is bit-identical
+  to source mode — `tests/dumpvec.sh` and the parity suite hold the
+  two paths to the same per-flip hashes; only the error *text* differs.
+  Build from source (the default) when debugging a cart.
 - One genuinely open corner: `tostr`'s 4-decimal display boundary. Real
   PICO-8's evidence is contradictory at the edges (raw `0xffff` displays
   as "1", demanding rounding; raw `6` displays as "0", demanding
