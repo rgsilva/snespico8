@@ -23,7 +23,7 @@ CORE := ../core-c/src
 P8OPT ?= -O0
 P8CFLAGS = --core=65816 --target=snes --code-model=large --data-model=large \
            --no-ppu-mul $(P8OPT) -I $(CORE) -I . \
-           -DP8_VMOPS_ADDR=0x7ef00cul --list-file=$(@:.o=.lst)
+           -DP8_VMOPS_ADDR=0x7ef00cul -DP8_HWMATH --list-file=$(@:.o=.lst)
 LUAOBJS := lapi lauxlib lbaselib lcode lctype lcorolib ldebug ldo ldump \
            lfunc lgc llex lmem lobject lopcodes lparser lstate lstring \
            ltable ltm lundump lvm lzio lpico8lib
@@ -139,6 +139,15 @@ $(BUILD)/p8obj/p8main.o: p8main.c p8spc.h $(BUILD)/cart_hello.h | $(BUILD)/p8obj
 $(BUILD)/p8obj/p8heap.o: p8heap.c p8heap.h | $(BUILD)/p8obj
 	$(P8CC) -o $@ p8heap.c $(P8CFLAGS)
 
+# M9 T5: CPU-multiplier/divider helpers (P8_HWMATH routes p8num here).
+# MUST build -O0: Calypsi -O2 DELETES volatile accesses made through
+# cast-constant pointers (observed: the whole divide chain compiled to
+# two reads with no trigger stores -- 5th documented miscompile; the
+# A/B ROM caught it as stale-divider garbage). All hardware-register
+# code in this project is -O0 for this reason.
+$(BUILD)/p8obj/hwmath.o: hwmath.c | $(BUILD)/p8obj
+	$(P8CC) -o $@ hwmath.c $(P8CFLAGS)
+
 # ---- SPC700 audio driver (M6) --------------------------------------
 # The driver is assembled with WLA-SPC700 into a 64KB RAM image; spc2c.py
 # extracts the .ORG $0200 region into a C blob (p8spc_blob.h) that the
@@ -169,7 +178,7 @@ $(BUILD)/p8obj/header.o: calypsi/header.s | $(BUILD)/p8obj
 	$(P8AS) -o $@ $< --core=65816 --target=SNES --code-model=large --data-model=large
 
 $(BUILD)/p8.raw: $(BUILD)/p8obj/pad.o $(P8LUA_O) $(P8CORE_O) $(BUILD)/p8obj/p8main.o \
-                 $(BUILD)/p8obj/p8heap.o $(BUILD)/p8obj/p8spc.o \
+                 $(BUILD)/p8obj/p8heap.o $(BUILD)/p8obj/hwmath.o $(BUILD)/p8obj/p8spc.o \
                  $(BUILD)/p8obj/stubs.o \
                  $(BUILD)/p8obj/mailbox.o $(BUILD)/p8obj/header.o
 	python3 tools/lstcheck.py $(BUILD)/p8obj
@@ -352,6 +361,16 @@ prof:
 	$(MESEN) --testrunner --timeout=900 $(BUILD)/p8.sfc test/p8prof.lua | tee $(BUILD)/prof_raw.txt
 	cp $(BUILD)/p8.map $(BUILD)/prof.map   # static ?L numbers shift per build
 	python3 tools/profsym.py $(BUILD)/prof.map $(BUILD)/prof_raw.txt
+
+# M9 T5: on-target A/B -- hardware math units vs the pure-C references
+# over random + directed corpora (the pxa discipline: asm-tier code is
+# trusted only after bit-identity on target). ~3-4 min wall.
+.PHONY: test-abmath
+test-abmath:
+	rm -f $(BUILD)/p8obj/p8main.o
+	$(MAKE) p8 P8MAINDEF=-DP8_ABMATH
+	$(MESENLONG) $(BUILD)/p8.sfc test/abmath.lua | grep -a "RESULT PASS abmath"
+	rm -f $(BUILD)/p8obj/p8main.o
 
 # M5c: boot Celeste Classic on the SNES. The cart is CC-BY-NC-SA and not
 # committed; fetch it first (same as core-c/tests/celeste.sh):

@@ -30,7 +30,41 @@ long p8fix_toint(long a)
   return (long)(int16_t)(U(a) >> 16);
 }
 
+/* M9 T5: the four 16x16 partials go through MUL16. SNES builds define
+** P8_HWMATH (snes/Makefile) and route to the CPU hardware multiplier
+** (snes/hwmath.c); everywhere else MUL16 is the native multiply, i.e.
+** exactly the pre-T5 expression. Bit-identity of the hardware path is
+** proven on target (make test-abmath) and by snesparity (SNES hardware
+** vs host C, same vectors). */
+#ifdef P8_HWMATH
+extern unsigned long p8hw_mul16(unsigned int a, unsigned int b);
+extern unsigned long p8hw_udiv32_8(unsigned long ua, unsigned char k);
+#define MUL16(x, y) ((uint32_t)p8hw_mul16((unsigned int)(x), (unsigned int)(y)))
+#else
+#define MUL16(x, y) ((uint32_t)(x) * (uint32_t)(y))
+#endif
+
 long p8fix_mul(long a, long b)
+{
+  uint32_t ua = U(a), ub = U(b);
+  uint32_t ah = ua >> 16, al = ua & 0xFFFFu;
+  uint32_t bh = ub >> 16, bl = ub & 0xFFFFu;
+  uint32_t r = MUL16(ah, bh) << 16;
+  r += MUL16(ah, bl) + MUL16(al, bh);
+  r += MUL16(al, bl) >> 16;
+  if (a < 0)
+    r -= ub << 16;
+  if (b < 0)
+    r -= ua << 16;
+  return S(r);
+}
+
+#ifdef P8_HWMATH
+/* pure-C references for the on-target A/B ROM (-DP8_ABMATH): the exact
+** pre-T5 compositions (native multiplies -> Calypsi _Mul32 helpers, and
+** the bit-serial udiv48 with no pow2/hardware fast paths). Unreferenced
+** in normal ROMs; the linker strips them. */
+long p8fix_mul_ref(long a, long b)
 {
   uint32_t ua = U(a), ub = U(b);
   uint32_t ah = ua >> 16, al = ua & 0xFFFFu;
@@ -44,6 +78,7 @@ long p8fix_mul(long a, long b)
     r -= ua << 16;
   return S(r);
 }
+#endif
 
 /* low 32 bits of the 48-bit quotient (hi:lo)/d; d != 0.
 ** Callers rely on the wrap for PICO-8 overflow semantics. */
@@ -83,11 +118,36 @@ long p8fix_div(long a, long b)
     while (t >>= 1)
       k++;
     q = (k >= 16) ? (ua >> (k - 16)) : (ua << (16 - k));
+#ifdef P8_HWMATH
+  } else if ((ub & 0xFFFFu) == 0u && (ub >> 16) < 256u) {
+    /* M9 T5: small integral divisor k (3,5,10,...,255): the 48-bit
+       quotient (ua<<16)/(k<<16) is exactly ua/k, a 32/8 divide on the
+       CPU hardware divider. Exact, no wrap involved (q <= ua). */
+    q = (uint32_t)p8hw_udiv32_8((unsigned long)ua, (unsigned char)(ub >> 16));
+#endif
   } else {
     q = udiv48(ua >> 16, ua << 16, ub);
   }
   return S(neg ? 0u - q : q);
 }
+
+#ifdef P8_HWMATH
+/* A/B reference: bit-serial division only -- no pow2 shift path, no
+** hardware divider -- so the A/B ROM re-proves BOTH fast paths on
+** target against the original algorithm. */
+long p8fix_div_ref(long a, long b)
+{
+  uint32_t ua, ub, q;
+  int neg;
+  if (b == 0)
+    return (a < 0) ? S(0x80000000u) : S(0x7FFFFFFFu);
+  neg = (a < 0) != (b < 0);
+  ua = (a < 0) ? 0u - U(a) : U(a);
+  ub = (b < 0) ? 0u - U(b) : U(b);
+  q = udiv48(ua >> 16, ua << 16, ub);
+  return S(neg ? 0u - q : q);
+}
+#endif
 
 long p8fix_mod(long a, long b)
 {

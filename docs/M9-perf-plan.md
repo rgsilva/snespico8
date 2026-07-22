@@ -135,11 +135,20 @@ ceremony (`lua_getglobal`/pcall x3, input) — that ceremony is the next
 flip-path lever if needed. Optional polish (unclaimed): split the 16 KB
 VRAM DMA across vblanks to drop the force-blank flicker.
 
-**T5 — asm leaf functions.** `p8fix_mul` via the CPU `$4202/$4203` 8x8
-hardware multiplier (four partials; the CPU multiplier is separate silicon
-from the Mode 7 matrix registers `$211B/$211C` that forced `--no-ppu-mul`,
-but verify no NMI-path contention). Asm `udiv48`; small-integer-divisor path
-via the `$4204` hardware divider. Each A/B-proven bit-identical (below).
+**T5 — hardware math units. LANDED** (as C helpers over the units, not
+raw asm — the win is the silicon, not the mnemonics). `p8fix_mul`'s four
+16x16 partials on the CPU multiplier (`$4202/$4203`, four 8x8 triggers
+each); `p8fix_div` small-integral-divisor path (`b = k` in 1..255) as
+four chained 16/8 hardware divides — the identity `(ua<<16)/(k<<16) =
+ua/k` makes it exact. Host keeps native expressions (`MUL16` macro), so
+core-c stays portable. Measured: **mul phase +38%** (~690 → ~950 ops/s).
+The A/B ROM (`make test-abmath`) caught **two fresh Calypsi miscompiles**
+en route: (5th) -O2 deletes volatile accesses through cast-constant
+pointers → `hwmath.c` pinned -O0; (6th) -O0 drops the truncation in
+`(uint8_t)(u32 >> K)` inside 16-bit expressions, doing an unmasked wide
+load → byte operands pre-masked into 16-bit locals. Wait margins are 3x
+documented latency, re-proven per build by the corpus. Diagnostic
+divider probes stay compiled-but-stripped for M10 hardware bring-up.
 
 **T6 — VM structural (contingency only).** Per-opcode split of
 `luaV_execute` (no allocator faces one 21 KB re-entrant body — the
@@ -192,7 +201,7 @@ bench costs ~2-8 min wall.
 | cart | metric | baseline | T1 | T2 | T4 | T3 (cumulative) |
 |------|--------|----------|----|----|----|----|
 | bench_vm | add-loop VM rate | **1,264 ops/s** (M3 continuity confirmed) | **1,374** (+8.7%) | 1,399 (+1.8%) | — | 1,399 |
-| bench_vm | mul-loop VM rate | ~620-670 ops/s | ~690 | — | — | — |
+| bench_vm | mul-loop VM rate | ~620-670 ops/s | ~690 | — | — | **~950 (T5, +38%)** |
 | bench_flip | game-frame, empty `_draw` | **~44 frames (~730 ms) → 1.37 fps ceiling** | — (T4 target) | unchanged | **~11 frames → ~5.5 fps (4x)** | ~11 frames |
 | bench_draw | fills/lines/circles+print | ~0.23 fps (16 flips/4.5K frames) | 17 flips (+6%) | 16 (noise) | 18 (+12%) | **49 (3.1x, ~0.7 fps)** |
 | demo_video (api) | | ~0.27 fps (20 flips/4.5K frames) | 22 flips (+10%) | 21 (noise) | **25 (+19%)** | **43 (2.2x, ~0.6 fps)** |

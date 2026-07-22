@@ -548,6 +548,87 @@ int main(void)
   REG8(0x4200) = 0x01;   /* auto-joypad read on (NMI/IRQ off): the PPU
                             latches both pads every vblank for read_pad() */
 
+#ifdef P8_ABMATH
+  /* M9 T5 on-target A/B: the hardware-unit math paths (p8hw_mul16 four-
+   * partial multiply; p8hw_udiv32_8 small-divisor divide; the T1 pow2
+   * shift path) vs the pure-C reference algorithms, over random +
+   * directed corpora. Any mismatch mailboxes the inputs and dies;
+   * test/parity.lua drives the run (OUT lines + status). */
+  {
+    extern long p8fix_mul(long, long);
+    extern long p8fix_div(long, long);
+    extern long p8fix_mul_ref(long, long);
+    extern long p8fix_div_ref(long, long);
+    static const long edges[] = {
+      0, 1, -1, 2, -2, 0x7FFF, 0x8000, 0xFFFF, 0x10000, 0x10001,
+      (long)0x7FFF0000l, (long)0x7FFFFFFFl, (long)-0x80000000l,
+      (long)-0x7FFFFFFFl, (long)-0x10000l, (long)0x30000l, (long)0xA0000l,
+    };
+    uint32_t s = 0x12345678u;
+    unsigned long n;
+    unsigned int k, m;
+    int ei, ej;
+#define AB_RND() (s ^= s << 13, s ^= s >> 17, s ^= s << 5, (long)(int32_t)s)
+#define AB_CHK(tag, fn, ref, aa, bb)                                   \
+    do {                                                               \
+      long a_ = (aa), b_ = (bb);                                       \
+      long g_ = fn(a_, b_), w_ = ref(a_, b_);                          \
+      if (g_ != w_) {                                                  \
+        mb_puts("ABMATH FAIL " tag " ");                               \
+        mb_puthex32((uint32_t)a_); mb_putc(' ');                       \
+        mb_puthex32((uint32_t)b_); mb_putc(' ');                       \
+        mb_puthex32((uint32_t)g_); mb_putc(' ');                       \
+        mb_puthex32((uint32_t)w_); mb_putc('\n');                      \
+        mb_finish(MB_STATUS_PANIC);                                    \
+      }                                                                \
+    } while (0)
+    {
+      extern unsigned long p8hw_div16_probe(unsigned int d, unsigned char k);
+      extern unsigned long p8hw_div_pair_probe(void);
+      mb_puts("probe 200/3 ");  mb_puthex32(p8hw_div16_probe(0x0200u, 3));
+      mb_puts(" 80/3 ");        mb_puthex32(p8hw_div16_probe(0x0080u, 3));
+      mb_puts(" ffff/ff ");     mb_puthex32(p8hw_div16_probe(0xFFFFu, 255));
+      mb_puts(" pair ");        mb_puthex32(p8hw_div_pair_probe());
+      mb_putc('\n');
+    }
+    mb_puts("abmath start\n");
+    for (ei = 0; ei < (int)(sizeof edges / sizeof edges[0]); ei++)
+      for (ej = 0; ej < (int)(sizeof edges / sizeof edges[0]); ej++) {
+        AB_CHK("mul", p8fix_mul, p8fix_mul_ref, edges[ei], edges[ej]);
+        AB_CHK("div", p8fix_div, p8fix_div_ref, edges[ei], edges[ej]);
+      }
+    /* 5K random pairs: the edge cross + directed sweeps below are the
+       real net (they caught two compiler bugs at pair ~100); volume
+       only adds wall time, and long Mesen runs get reaped under
+       multi-session load. */
+    for (n = 0; n < 2000u; n++) {
+      long a = AB_RND(), b = AB_RND();
+      AB_CHK("mul", p8fix_mul, p8fix_mul_ref, a, b);
+      AB_CHK("div", p8fix_div, p8fix_div_ref, a, b);
+      if ((n & 511u) == 0u)
+        mb_puts("ab tick\n");   /* progress: a reaped run still shows depth */
+    }
+    /* directed: every small integral divisor, both signs (the hardware
+     * divider path), plus pow2 raws for the T1 shift path */
+    for (k = 1; k <= 255; k++)
+      for (m = 0; m < 8; m++) {
+        long b = (long)((uint32_t)k << 16);
+        AB_CHK("divk", p8fix_div, p8fix_div_ref, AB_RND(),
+               (m & 1) ? -b : b);
+      }
+    for (k = 0; k < 32; k++)
+      for (m = 0; m < 16; m++) {
+        long b = (long)(1ul << k);
+        AB_CHK("divp2", p8fix_div, p8fix_div_ref, AB_RND(),
+               (m & 1) ? -b : b);
+      }
+    mb_puts("ABMATH PASS\n");
+    mb_finish(MB_STATUS_PASS);
+#undef AB_CHK
+#undef AB_RND
+  }
+#endif
+
 #ifdef P8_SPC_TEST
   /* M6a/b: IPL-upload the driver, then key four voices with four PICO-8
    * waveforms at four known pitches. The harness reads the voice mask at

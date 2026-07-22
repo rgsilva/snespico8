@@ -77,6 +77,21 @@ static long ref_div(long a, long b)
   return RS(neg ? 0u - q : q);
 }
 
+static long ref_mul(long a, long b)
+{
+  uint32_t ua = RU(a), ub = RU(b);
+  uint32_t ah = ua >> 16, al = ua & 0xFFFFu;
+  uint32_t bh = ub >> 16, bl = ub & 0xFFFFu;
+  uint32_t r = (ah * bh) << 16;
+  r += ah * bl + al * bh;
+  r += (al * bl) >> 16;
+  if (a < 0)
+    r -= ub << 16;
+  if (b < 0)
+    r -= ua << 16;
+  return RS(r);
+}
+
 static long ref_add(long a, long b) { return RS(RU(a) + RU(b)); }
 static long ref_sub(long a, long b) { return RS(RU(a) - RU(b)); }
 static long ref_unm(long a) { return RS(0u - RU(a)); }
@@ -227,6 +242,7 @@ int main(void)
       CHK2("bor-macro", REPLICA_BOR, ref_bor, a, b);
       CHK2("bxor", p8fix_bxor, ref_bxor, a, b);
       CHK2("bxor-macro", REPLICA_BXOR, ref_bxor, a, b);
+      CHK2("mul", p8fix_mul, ref_mul, a, b);
       CHK2("div", p8fix_div, ref_div, a, b);
       CHK2("shl", p8fix_shl, ref_shl, a, b);
       CHK2("shr", p8fix_shr, ref_shr, a, b);
@@ -254,6 +270,7 @@ int main(void)
     CHK2("bxor-macro", REPLICA_BXOR, ref_bxor, a, b);
     CHK1("unm-macro", REPLICA_UNM, ref_unm, a);
     CHK1("bnot-macro", REPLICA_BNOT, ref_bnot, a);
+    CHK2("mul", p8fix_mul, ref_mul, a, b);
     CHK2("shl", p8fix_shl, ref_shl, a, b);
     CHK2("shr", p8fix_shr, ref_shr, a, b);
     CHK2("lshr", p8fix_lshr, ref_lshr, a, b);
