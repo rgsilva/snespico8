@@ -1,12 +1,10 @@
 # M9 — performance plan
 
-Status: **T0–T5 landed** (measure, pure-C, selective -O2, gfx ctx, flip
-LUT, hardware math units — commits `ed0d85d..8109f0b`). Remaining: T6
-(per-opcode VM split — promoted from contingency to the real VM lever
-after T2's finding) and the deferred polish items (vblank frame pacing,
-DMA split, sprite row-blit, `--force-switch` parse experiment, `bugs/`
-reductions for the three new miscompiles). This document is the
-analysis, the plan, the validation strategy, and the results table.
+Status: **T0–T6 all landed — M9 complete.** (Commits `ed0d85d..HEAD`;
+deferred polish lives in `FUTURE.md`: vblank pacing, DMA split, sprite
+row-blit, `--force-switch` parse experiment, flip-ceremony diet, `bugs/`
+reductions.) This document is the analysis, the plan, the validation
+strategy, and the results table.
 
 Cumulative: fps ceiling 1.37 → ~5.5 (4x), draw-bound carts ~3x,
 demo_video 20 → 43 flips (2.2x), VM add +11% and mul +38%, ROM halved
@@ -155,10 +153,25 @@ load → byte operands pre-masked into 16-bit locals. Wait margins are 3x
 documented latency, re-proven per build by the corpus. Diagnostic
 divider probes stay compiled-but-stripped for M10 hardware bring-up.
 
-**T6 — VM structural (contingency only).** Per-opcode split of
-`luaV_execute` (no allocator faces one 21 KB re-entrant body — the
-micropython-snes trick) if T2 is layout-fragile; a 5.3-style local-`pc`
-cache if post-T2 profiling shows instruction fetch dominating.
+**T6 — the per-opcode VM split. LANDED — and it settled the question.**
+`luaV_execute`'s frame state moved into a `VMCtx` struct; 28 opcode
+bodies became per-op functions (verbatim ports, `ProtectV` keeping
+`v->base` authoritative); `JMP` and `FORLOOP` were extracted, measured,
+and put back inline (bodies too small to amortize a call — the bench
+regressed 5% and recovered on revert; the bench decides, not theory).
+Result: add-loop 1,399 → **1,485 ops/s (+6%)**, and a clean lvm.c-only
+A/B on a gameplay-shaped cart (table reads + tests + adds in celeste's
+histogram proportions) measured **+1.7%** (1,012 vs 995 ops/s).
+
+**The finding that matters:** the VM floor on a stock 65816 is
+**memory-bound, not codegen-bound**. Every op moves 6-byte TValues
+through 24-bit far pointers; no allocator quality can delete those bus
+cycles, which is why neither -O2 (T2) nor the split (T6) moved the
+needle much. The split stays anyway: it is strictly ≥ baseline, it is
+the shape that avoids the known giant-switch miscompile roulette, and
+per-op bodies are individually asm-able later. But the next real VM
+multiplier is a faster memory system — that is the SA-1 tier (M11),
+exactly where the original plan's honest ceiling pointed.
 
 When anything sustains 30+ fps: add vblank frame pacing (a nice problem).
 
@@ -203,14 +216,14 @@ already drifted). `make bench-{vm,draw,flip,api,celeste}` + `make prof`
 fences run before every link. Mesen runs ~0.6x real time headless, so a
 bench costs ~2-8 min wall.
 
-| cart | metric | baseline | T1 | T2 | T4 | T3 (cumulative) |
-|------|--------|----------|----|----|----|----|
-| bench_vm | add-loop VM rate | **1,264 ops/s** (M3 continuity confirmed) | **1,374** (+8.7%) | 1,399 (+1.8%) | — | 1,399 |
-| bench_vm | mul-loop VM rate | ~620-670 ops/s | ~690 | — | — | **~950 (T5, +38%)** |
-| bench_flip | game-frame, empty `_draw` | **~44 frames (~730 ms) → 1.37 fps ceiling** | — (T4 target) | unchanged | **~11 frames → ~5.5 fps (4x)** | ~11 frames |
-| bench_draw | fills/lines/circles+print | ~0.23 fps (16 flips/4.5K frames) | 17 flips (+6%) | 16 (noise) | 18 (+12%) | **49 (3.1x, ~0.7 fps)** |
-| demo_video (api) | | ~0.27 fps (20 flips/4.5K frames) | 22 flips (+10%) | 21 (noise) | **25 (+19%)** | **43 (2.2x, ~0.6 fps)** |
-| ROM size | | 512 KB | 512 KB | **256 KB** | 256 KB | 256 KB |
+| cart | metric | baseline | T1 | T2 | T4 | T3 (cumulative) | T5/T6 (final) |
+|------|--------|----------|----|----|----|----|----|
+| bench_vm | add-loop VM rate | **1,264 ops/s** (M3 continuity confirmed) | **1,374** (+8.7%) | 1,399 (+1.8%) | — | 1,399 | **1,485 (T6, +6%)** |
+| bench_vm | mul-loop VM rate | ~620-670 ops/s | ~690 | — | — | — | **~950 (T5, +38%)** |
+| bench_flip | game-frame, empty `_draw` | **~44 frames (~730 ms) → 1.37 fps ceiling** | — (T4 target) | unchanged | **~11 frames → ~5.5 fps (4x)** | ~11 frames | ~11 frames |
+| bench_draw | fills/lines/circles+print | ~0.23 fps (16 flips/4.5K frames) | 17 flips (+6%) | 16 (noise) | 18 (+12%) | **49 (3.1x, ~0.7 fps)** | 49 |
+| demo_video (api) | | ~0.27 fps (20 flips/4.5K frames) | 22 flips (+10%) | 21 (noise) | **25 (+19%)** | **43 (2.2x, ~0.6 fps)** | **45 (2.25x)** |
+| ROM size | | 512 KB | 512 KB | **256 KB** | 256 KB | 256 KB | 256 KB |
 
 (Columns are chronological: T4 landed before T3; each column includes
 everything to its left.)

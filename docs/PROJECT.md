@@ -445,7 +445,7 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
         waits on `$4212` bit 0 first. **btnp repeat** is the core's
         held-counter repeat (M2, delay/interval at 0x5f5c/0x5f5d), live now
         that M7 reads the real pad. **M8 complete.**
-- [ ] M9: perf passes — **T0–T4 landed** (`ed0d85d..92d5568` + docs; see
+- [x] M9: perf passes — **complete, T0–T6** (`ed0d85d..92d5568` + docs; see
       `docs/M9-perf-plan.md` for the full results table). Landed: the
       measurement rig (live mailbox telemetry — vmops counts straight
       into MB_VMOPS, heap counters at fixed slots; PC-sampling profiler;

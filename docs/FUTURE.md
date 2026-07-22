@@ -1,14 +1,12 @@
 # Where snespico8 goes next
 
-## Make it faster (finish M9)
+M9 is complete (T0–T6; `docs/M9-perf-plan.md` has the full story,
+including the closing finding: the VM on stock hardware is memory-bound —
+the per-opcode split landed, proved it, and stays as the safer shape).
+What remains is polish, hardware, and the SA-1 tier.
 
-- **T6 — the per-opcode VM split.** The big remaining lever. Calypsi's
-  allocator gives up inside `luaV_execute`'s 21 KB switch body (-O2 emits
-  near-identical code to -O0 there), so the fix is structural: one small
-  function per opcode, dispatch through a table, each body small enough to
-  register-allocate. micropython-snes proved the pattern on this exact
-  compiler. Expect the biggest VM multiplier of the whole milestone;
-  gate with the full roulette battery — this is maximum-roulette territory.
+## Squeeze the stock machine further (optional polish)
+
 - **Flip ceremony diet.** Of the ~11-frame game frame, ~6–7 are
   `lua_getglobal`/`pcall` ceremony per `_update`/`_draw`. Caching the
   function references once per cart (invalidate on global assignment, or
@@ -66,7 +64,7 @@ only judge so far. The bring-up kit is already in-tree:
 
 | # | milestone | state |
 |---|-----------|-------|
-| M9 | perf passes | T0–T5 done; T6 + polish remain |
+| M9 | perf passes | **done** (T0–T6); polish above is optional |
 | M10 | real hardware, stock SNES + flashcart | kit ready, not run |
 | M11 | SA-1 tier | design notes only |
 | M12 | documentation pass | this docs/ set |

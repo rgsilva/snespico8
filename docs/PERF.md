@@ -25,14 +25,16 @@ is a PC-sampling profiler folded through the link map.
   VRAM DMA, and ~6–7 of per-frame Lua/C ceremony — `lua_getglobal` +
   `pcall` for `_update`/`_draw`, the implicit-flip lookup, input sampling.
   The ceremony is the next flip-path lever if anyone needs >6 fps menus.
-- **VM ops (~1,400/s ≈ 1,900 cycles/op)**: `luaV_execute` dispatch and
-  operand ceremony. The T2 finding that reframed the roadmap: Calypsi
-  compiles the giant re-entrant switch body to nearly identical code at
-  -O2 as at -O0 — the register allocator effectively gives up inside it,
-  so per-TU optimization cannot reach the dispatch loop. The proven fix
-  (micropython-snes did exactly this) is the **per-opcode VM split**: carve
-  `luaV_execute` into per-op functions small enough to allocate well.
-  That is T6, the remaining big lever.
+- **VM ops (~1,500/s ≈ 1,800 cycles/op): memory-bound, and now proven
+  so.** T2 showed -O2 barely changes the giant switch body; T6 then split
+  it into per-op functions (the micropython-snes pattern) and a clean
+  lvm.c-only A/B on gameplay-shaped code measured just +1.7% (+6% on the
+  arith-heavy microbench). Conclusion: the floor is not codegen quality —
+  every op moves 6-byte TValues through 24-bit far pointers, and those
+  bus cycles are irreducible on a stock 65816. The split stays (strictly
+  ≥ baseline, dodges the giant-switch miscompile class, per-op bodies are
+  asm-able), but the next VM multiplier is a faster memory system:
+  the SA-1 tier.
 - **Draw-bound carts**: per-pixel cost is now clip-compare + fillp-bit +
   one screen-byte RMW on dp-resident state. The remaining fat is sprite
   pixels re-reading the sheet per pixel (`p8i_sheet_get`) — a row-blit
@@ -48,11 +50,12 @@ is a PC-sampling profiler folded through the link map.
 
 ## What the ceiling means
 
-Real-time Celeste needs ~900K VM ops/s (30K ops/frame x 30 fps); the T6
-split plus everything above might reach 10–20K. Stock hardware runs simple
-carts at real (single-digit) frame rates and API-heavy carts watchably;
-full-speed VM-heavy games are the SA-1 tier (M11), which brings a 4x clock
-and a linear 256 KB heap.
+Real-time Celeste needs ~900K VM ops/s; stock hardware, fully optimized
+(T0–T6), delivers ~1.5K — the gap is the memory system, not the code.
+Stock runs simple carts at real (single-digit) frame rates and API-heavy
+carts watchably; VM-heavy games are the SA-1 tier (M11): 4x clock, faster
+RAM, and a linear 256 KB heap, with the whole T0–T6 core carrying over
+unchanged.
 
 ## The measurement rig (use it, don't guess)
 

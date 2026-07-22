@@ -74,7 +74,7 @@ target: [docs/BUILDING.md](docs/BUILDING.md).
 | [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | what runs, how fast, API coverage, pinned edge semantics — with screenshots |
 | [docs/PERF.md](docs/PERF.md) | where the time goes; the measurement rig; rules of the road |
 | [docs/BUILDING.md](docs/BUILDING.md) | build the ROM + bring your own carts |
-| [docs/FUTURE.md](docs/FUTURE.md) | the VM split, real hardware, SA-1, the backlog |
+| [docs/FUTURE.md](docs/FUTURE.md) | polish backlog, real hardware, SA-1 |
 | [docs/PROJECT.md](docs/PROJECT.md) | the original brief + the full milestone log |
 | [docs/cart-formats.md](docs/cart-formats.md), [docs/audio-format.md](docs/audio-format.md), [docs/M9-perf-plan.md](docs/M9-perf-plan.md) | format notes and the M9 perf log |
 
@@ -93,11 +93,12 @@ tools/           third-party checkouts (Calypsi, z8lua, ...) — gitignored
 
 ## Status
 
-Milestones M0–M8 and M12–M14 are done: the core is oracle-exact, Celeste
+Milestones M0–M9 and M12–M14 are done: the core is oracle-exact, Celeste
 Classic boots to its title on the SNES, audio and input are real-time, CI
-builds the ROM. M9 (performance) is mid-flight — T0–T5 landed (fps ceiling
-4x, draw carts 3x, hardware mul +38%, ROM halved); the per-opcode VM split
-remains. Real-hardware verification (M10) and the SA-1 tier (M11) are next.
+builds the ROM, and the performance milestone closed at a 4x fps ceiling,
+3x draw carts, hardware mul +38%, half the ROM — with the honest finding
+that the VM on stock hardware is memory-bound (docs/PERF.md).
+Real-hardware verification (M10) and the SA-1 tier (M11) are next.
 Everything so far is developed against the cycle-accurate
 [Mesen](https://www.mesen.ca/) — if you flash it to a cart, we'd love a
 report. Details: [docs/PROJECT.md](docs/PROJECT.md).
