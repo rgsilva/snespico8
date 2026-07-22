@@ -94,7 +94,7 @@ make -C snes release                    # M14 -> build/snespico8.sfc (the public
 ## Bring your own carts
 
 Any `.p8` or `.p8.png` (a straight PICO-8 export — the PNG stego + pxa
-decode happens at build time on the host, see `cart-formats.md`) can become
+decode happens at build time on the host, see `formats/cart-formats.md`) can become
 a ROM:
 
 ```sh

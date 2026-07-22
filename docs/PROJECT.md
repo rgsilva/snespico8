@@ -357,7 +357,7 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
         loops, music-pattern chaining) that the SPC mirrors, plus stat(16..24)
         and the sfx()/music() command seam. SFX (0x3200) / music (0x3100)
         memory format VERIFIED against real PICO-8 by peeking memory back
-        (`docs/audio-format.md`); note timing uses the zepto8 reference
+        (`docs/formats/audio-format.md`); note timing uses the zepto8 reference
         constant (speed ticks at 120.5 Hz) since headless PICO-8 doesn't run
         the mixer. `tests/audiovec.sh` goldens the command trace + stat dump.
   - [x] M6a: **APU bring-up** (`snes/p8spc.c/.asm`, `make -C snes test-spc`).
@@ -479,7 +479,7 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
 - [ ] M10: real hardware, stock SNES, flash cart
 - [ ] M11: SA-1 tier — 4x clock + 256 KB linear heap
 - [x] M12: **documentation pass** — `docs/BUILDING.md` (prerequisites + every
-      make target, host suites, the release flow), `docs/cart-formats.md` (the
+      make target, host suites, the release flow), `docs/formats/cart-formats.md` (the
       `.p8` / `.p8.png` stego + pxa reference hand-derived in M8b), and a
       refreshed `README.md` (a per-milestone status map + doc links). Current
       through M14.

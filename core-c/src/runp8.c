@@ -94,7 +94,7 @@ static int gather_nibbles(const char *line, uint8_t *nb, int max)
 /* __sfx__ line (168 chars): mode/speed/loopstart/loopend (2 hex each) then
 ** 32 notes of 5 hex (pitch=2, wave=1, vol=1, eff=1). Packs to 68 bytes:
 ** 32 LE note words [pitch | wave<<6 | vol<<9 | eff<<12] then the 4 footer
-** bytes. dst = &p8_ram[P8_SFX + sfx*68]. (docs/audio-format.md) */
+** bytes. dst = &p8_ram[P8_SFX + sfx*68]. (docs/formats/audio-format.md) */
 static void parse_sfx_line(const char *line, uint8_t *dst)
 {
   uint8_t nb[168];

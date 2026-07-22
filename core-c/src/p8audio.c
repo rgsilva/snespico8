@@ -7,7 +7,7 @@
 ** stat(16..24) audio state and drives the sfx()/music() COMMAND callback
 ** that is the host<->SNES parity signal (what the cart requests is
 ** deterministic and identical on both; the real-time playback position
-** diverges, like time() and the raw PRNG — see docs/audio-format.md).
+** diverges, like time() and the raw PRNG — see docs/formats/audio-format.md).
 **
 ** Portable C99, Calypsi-safe: no int64, 16-bit-int-safe, all RAM access
 ** runtime-indexed (no const-ptr+0x8000 folding). */
@@ -16,7 +16,7 @@
 #include "p8int.h"
 #include "lua/lauxlib.h"
 
-/* ---- sfx / music memory layout (verified: docs/audio-format.md) ---- */
+/* ---- sfx / music memory layout (verified: docs/formats/audio-format.md) ---- */
 #define SFX_BYTES 68u                       /* 32 note words + 4 footer */
 #define SFX_BASE(n)    (P8_SFX + (unsigned)(n) * SFX_BYTES)
 #define SFX_SPEED(n)   p8_ram[SFX_BASE(n) + 65u]

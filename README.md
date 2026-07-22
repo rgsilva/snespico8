@@ -92,7 +92,8 @@ target: [docs/BUILDING.md](docs/BUILDING.md).
 | [docs/BUILDING.md](docs/BUILDING.md) | build the ROM + bring your own carts |
 | [docs/FUTURE.md](docs/FUTURE.md) | polish backlog, real hardware, SA-1 |
 | [docs/PROJECT.md](docs/PROJECT.md) | the original brief + the full milestone log |
-| [docs/cart-formats.md](docs/cart-formats.md), [docs/audio-format.md](docs/audio-format.md), [docs/M9-perf-plan.md](docs/M9-perf-plan.md) | format notes and the M9 perf log |
+| [docs/formats/](docs/formats/) | format notes: `.p8`/`.p8.png` cart decode, the SFX/music memory layout |
+| [docs/M9-perf-plan.md](docs/M9-perf-plan.md) | the M9 perf log (analysis, tiers, results, the T7 addendum) |
 
 ## Layout
 
@@ -106,20 +107,6 @@ carts/           micro-cart test suite (BBS carts stay local: not ours to ship)
 docs/            documentation + the design brief
 tools/           third-party checkouts (Calypsi, z8lua, ...) — gitignored
 ```
-
-## Status
-
-Milestones M0–M9 and M12–M14 are done: the core is oracle-exact, Celeste
-Classic boots to its title on the SNES, audio and input are real-time,
-and CI builds the ROM. The performance milestone closed at a 4x fps
-ceiling and 3x draw carts, then its T7 reevaluation added +72% VM
-throughput, doubled the hardware-math loops, and made the on-console
-parse optional (build-time bytecode, 3x faster boot) — alongside the
-honest finding that what remains is memory-bound (docs/PERF.md).
-Real-hardware verification (M10) and the SA-1 tier (M11) are next.
-Everything so far is developed against the cycle-accurate
-[Mesen](https://www.mesen.ca/) — if you flash it to a cart, we'd love a
-report. Details: [docs/PROJECT.md](docs/PROJECT.md).
 
 ## Built with AI, for fun
 
