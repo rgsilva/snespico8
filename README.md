@@ -10,9 +10,11 @@ cart's music in real time while the game runs. It ships as a single flashable
 doing what they were always capable of.
 
 <p align="center">
-  <img src="docs/assets/celeste_title.png" width="480" alt="Celeste Classic's title screen rendered by snespico8 on a SNES"><br>
-  <sub>Celeste Classic's title screen — 27&nbsp;KB of Lua parsed and drawn on the SNES itself.
-  More shots in <a href="docs/COMPATIBILITY.md">COMPATIBILITY.md</a>.</sub>
+  <img src="docs/assets/celeste_title.png" width="380" alt="Celeste Classic's title screen rendered by snespico8 on a SNES">
+  <img src="docs/assets/celeste_ingame.png" width="380" alt="Celeste Classic gameplay running on snespico8"><br>
+  <sub>Celeste Classic on a SNES — title and actual gameplay, 27&nbsp;KB of Lua
+  interpreted by the console itself (in-game shot captured mid-playthrough in
+  Mesen). More shots in <a href="docs/COMPATIBILITY.md">COMPATIBILITY.md</a>.</sub>
 </p>
 
 ## Wait, what?
