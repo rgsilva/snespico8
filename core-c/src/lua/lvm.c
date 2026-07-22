@@ -231,6 +231,9 @@ static int call_orderTM (lua_State *L, const TValue *p1, const TValue *p2,
 #else
 unsigned long p8_vmops;
 #endif
+#ifdef P8_OPSTATS
+unsigned long p8_opstats[64];  /* per-opcode counters (runp8 -S) */
+#endif
 
 lua_Number luaV_peek(struct lua_State *L, lua_Number a, int count)
 {
@@ -605,6 +608,9 @@ void luaV_execute (lua_State *L) {
 #ifndef P8_NO_VMOPS
     p8_vmops++;  /* snespico8: M1.5 instruction counter (M9: release
                     builds may pass -DP8_NO_VMOPS to drop it) */
+#endif
+#ifdef P8_OPSTATS
+    p8_opstats[GET_OPCODE(i)]++;  /* host-only: T6 split-set evidence */
 #endif
     StkId ra;
     if ((L->hookmask & (LUA_MASKLINE | LUA_MASKCOUNT)) &&

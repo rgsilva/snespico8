@@ -207,6 +207,7 @@ static uint32_t fnv1a(const uint8_t *p, size_t n)
 static unsigned long ops_at_last_flip;
 static int hash_mode; /* -H: emit machine-RAM parity hashes per flip */
 static int audio_trace; /* -A: print the sfx()/music() command trace */
+static int opstats; /* -S: dump the per-opcode histogram (P8_OPSTATS) */
 
 /* audio command seam: on the host this is the parity trace (the SNES build
 ** mails the same commands to the SPC). Deterministic per cart, so host and
@@ -334,6 +335,7 @@ int main(int argc, char **argv)
     else if (!strcmp(argv[i], "-p") && i + 1 < argc) ppm = argv[++i];
     else if (!strcmp(argv[i], "-H")) hash_mode = 1;
     else if (!strcmp(argv[i], "-A")) audio_trace = 1;
+    else if (!strcmp(argv[i], "-S")) opstats = 1;
     else if (!strcmp(argv[i], "-M") && i + 2 < argc) {
       measure_win_kb = atoi(argv[++i]);
       measure_total_kb = atoi(argv[++i]);
@@ -419,6 +421,18 @@ int main(int argc, char **argv)
     printf("DONE frames=%u vmops=%lu ops/frame=%lu\n", f, p8_vmops,
            f ? p8_vmops / f : 0);
   }
+#ifdef P8_OPSTATS
+  if (opstats) {
+    /* T6 evidence: which opcodes actually execute. Extern-declared here
+       to keep core headers out of the runner (names from lopcodes.c). */
+    extern unsigned long p8_opstats[64];
+    extern const char *const luaP_opnames[];
+    int op;
+    for (op = 0; op < 64; op++)
+      if (p8_opstats[op])
+        printf("OPSTAT %-12s %lu\n", luaP_opnames[op], p8_opstats[op]);
+  }
+#endif
   if (measure_win_kb) {
     /* report BEFORE lua_close so peak reflects live state */
     printf("HEAP win=%dKB total=%dKB peak_used=%lu free=%lu"
