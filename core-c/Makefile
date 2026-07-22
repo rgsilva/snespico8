@@ -6,7 +6,9 @@ CC ?= cc
 # without it gcc's strict signed-overflow UB diverges (e.g. sin(0.25) came out
 # -1 on gcc-Linux vs -1.1055 everywhere else). Forcing wraparound makes the
 # host match the SNES semantics the code is written for.
-CFLAGS = -O2 -std=c99 -fwrapv -Wall -Wextra -Wno-unused-parameter -Isrc
+# P8_OPSTATS: host-only per-opcode counters behind runp8 -S (T6 evidence
+# tooling); one array increment per dispatched op, never in the SNES build.
+CFLAGS = -O2 -std=c99 -fwrapv -Wall -Wextra -Wno-unused-parameter -Isrc -DP8_OPSTATS
 
 LUA = lapi lauxlib lbaselib lcode lctype lcorolib ldebug ldo ldump lfunc lpico8lib \
       lgc llex lmem lobject lopcodes lparser lstate lstring ltable ltm \
