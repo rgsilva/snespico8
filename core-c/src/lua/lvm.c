@@ -602,7 +602,10 @@ void luaV_execute (lua_State *L) {
   /* main loop of interpreter */
   for (;;) {
     Instruction i = *(ci->u.l.savedpc++);
-    p8_vmops++;  /* snespico8: M1.5 instruction counter */
+#ifndef P8_NO_VMOPS
+    p8_vmops++;  /* snespico8: M1.5 instruction counter (M9: release
+                    builds may pass -DP8_NO_VMOPS to drop it) */
+#endif
     StkId ra;
     if ((L->hookmask & (LUA_MASKLINE | LUA_MASKCOUNT)) &&
         (--L->hookcount == 0 || L->hookmask & LUA_MASKLINE)) {

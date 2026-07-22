@@ -73,7 +73,16 @@ check-ci: $(BUILD)/runp8
 	bash tests/gfxvec.sh
 	bash tests/audiovec.sh
 
+# M9: differential fuzzer gating every p8num rewrite (exhaustive toint,
+# pow2-divisor div sweep, luaconf macro replicas). Single TU on purpose:
+# compiling p8num.c into the same object lets the host compiler inline
+# both sides, so the 2^32 sweep takes seconds. Run it via taskpolicy or
+# a foreground shell -- macOS background QoS can throttle it 5-10x.
+fuzz: | $(BUILD)
+	$(CC) -O3 -std=c99 -fwrapv -Wall -Wextra -o $(BUILD)/fixfuzz tests/fixfuzz.c src/p8num.c -Isrc
+	$(BUILD)/fixfuzz
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all test check check-ci clean
+.PHONY: all test check check-ci fuzz clean

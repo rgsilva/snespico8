@@ -456,11 +456,18 @@ extern long p8_str2fix(const char *s, char **endptr);
 
 /* these are quite standard operations */
 #if defined(LUA_CORE)
-#define luai_numadd(L,a,b)	((LUA_NUMBER)p8fix_add((long)(a), (long)(b)))
-#define luai_numsub(L,a,b)	((LUA_NUMBER)p8fix_sub((long)(a), (long)(b)))
+/* M9 T1: add/sub/unm and the pure-bit ops are direct expressions, not
+   p8fix_* calls -- Calypsi has no LTO, so a cross-TU jsl per arith op
+   could never inline. MUST stay exact-32-bit (unsigned LUA_INT32): on a
+   64-bit host a plain (unsigned long) would not wrap at 32 bits and
+   would silently break host<->SNES parity (fixfuzz caught that). The
+   (LUA_INT32) result cast relies on 2's-complement wrap: -fwrapv on
+   host, native on the 65816. */
+#define luai_numadd(L,a,b)	((LUA_NUMBER)(LUA_INT32)((unsigned LUA_INT32)(a) + (unsigned LUA_INT32)(b)))
+#define luai_numsub(L,a,b)	((LUA_NUMBER)(LUA_INT32)((unsigned LUA_INT32)(a) - (unsigned LUA_INT32)(b)))
 #define luai_nummul(L,a,b)	((LUA_NUMBER)p8fix_mul((long)(a), (long)(b)))
 #define luai_numdiv(L,a,b)	((LUA_NUMBER)p8fix_div((long)(a), (long)(b)))
-#define luai_numunm(L,a)	((LUA_NUMBER)p8fix_unm((long)(a)))
+#define luai_numunm(L,a)	((LUA_NUMBER)(LUA_INT32)(0u - (unsigned LUA_INT32)(a)))
 #define luai_numeq(a,b)		((a)==(b))
 #define luai_numlt(L,a,b)	((a)<(b))
 #define luai_numle(L,a,b)	((a)<=(b))
@@ -468,15 +475,15 @@ extern long p8_str2fix(const char *s, char **endptr);
 
 /* PICO-8 dialect operators (bit ops work on the raw 16.16 bits) */
 #define luai_numidiv(L,a,b)	((LUA_NUMBER)p8fix_idiv((long)(a), (long)(b)))
-#define luai_numband(L,a,b)	((LUA_NUMBER)p8fix_band((long)(a), (long)(b)))
-#define luai_numbor(L,a,b)	((LUA_NUMBER)p8fix_bor((long)(a), (long)(b)))
-#define luai_numbxor(L,a,b)	((LUA_NUMBER)p8fix_bxor((long)(a), (long)(b)))
+#define luai_numband(L,a,b)	((LUA_NUMBER)(LUA_INT32)((unsigned LUA_INT32)(a) & (unsigned LUA_INT32)(b)))
+#define luai_numbor(L,a,b)	((LUA_NUMBER)(LUA_INT32)((unsigned LUA_INT32)(a) | (unsigned LUA_INT32)(b)))
+#define luai_numbxor(L,a,b)	((LUA_NUMBER)(LUA_INT32)((unsigned LUA_INT32)(a) ^ (unsigned LUA_INT32)(b)))
 #define luai_numshl(L,a,b)	((LUA_NUMBER)p8fix_shl((long)(a), (long)(b)))
 #define luai_numshr(L,a,b)	((LUA_NUMBER)p8fix_shr((long)(a), (long)(b)))
 #define luai_numlshr(L,a,b)	((LUA_NUMBER)p8fix_lshr((long)(a), (long)(b)))
 #define luai_numrotl(L,a,b)	((LUA_NUMBER)p8fix_rotl((long)(a), (long)(b)))
 #define luai_numrotr(L,a,b)	((LUA_NUMBER)p8fix_rotr((long)(a), (long)(b)))
-#define luai_numbnot(L,a)	((LUA_NUMBER)p8fix_bnot((long)(a)))
+#define luai_numbnot(L,a)	((LUA_NUMBER)(LUA_INT32)(~(unsigned LUA_INT32)(a)))
 #define luai_numpeek(L,a)	(luaV_peek(L,(a),1))
 #define luai_numpeek2(L,a)	(luaV_peek(L,(a),2))
 #define luai_numpeek4(L,a)	(luaV_peek(L,(a),4))

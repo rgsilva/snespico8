@@ -1,8 +1,19 @@
 # M9 — performance plan
 
-Status: **in progress — T0 (measurement) landed.** This document is the
-analysis, the tiered optimization plan, the validation strategy, and the
-running results table for M9.
+Status: **in progress — T0 (measurement) and T1 (pure-C wins) landed.**
+This document is the analysis, the tiered optimization plan, the
+validation strategy, and the running results table for M9.
+
+T1 notes: gains match the honest sizing (+8.7% VM — per-op arithmetic is
+a minority at ~2,100 cycles/op; T2 attacks the dispatch ceremony that
+dominates). The T1 gates also caught two latent shift bugs shipped since
+M1: `shl/shr/lshr` by `0x8000.0000` never terminated (fix32 self-negation
+in the unm-recursion path — a stack overflow on hardware), and fractional
+negative counts trunc-rounded where the z8lua oracle floors (`16 << -1.5`
+was 8, oracle wants 4). Both fixed non-recursively and pinned by six new
+numvec vectors (48 → 54) plus fixfuzz's shift refs. The hookmask gating
+idea from the original T1 list was dropped: measured share is inside the
+<2.5% counter overhead and it touches Lua debug-hook semantics.
 
 ## Where the cycles go (the audit)
 
@@ -154,13 +165,13 @@ already drifted). `make bench-{vm,draw,flip,api,celeste}` + `make prof`
 fences run before every link. Mesen runs ~0.6x real time headless, so a
 bench costs ~2-8 min wall.
 
-| cart | metric | baseline |
-|------|--------|----------|
-| bench_vm | add-loop VM rate | **1,264 ops/s** (M3 continuity confirmed) |
-| bench_vm | mul-loop VM rate | ~620-670 ops/s |
-| bench_flip | game-frame, empty `_draw` | **~44 frames (~730 ms) → 1.37 fps ceiling** |
-| bench_draw | fills/lines/circles+print | ~0.23 fps |
-| demo_video (api) | | ~0.27 fps |
+| cart | metric | baseline | T1 |
+|------|--------|----------|----|
+| bench_vm | add-loop VM rate | **1,264 ops/s** (M3 continuity confirmed) | **1,374** (+8.7%) |
+| bench_vm | mul-loop VM rate | ~620-670 ops/s | ~690 |
+| bench_flip | game-frame, empty `_draw` | **~44 frames (~730 ms) → 1.37 fps ceiling** | — (T4 target) |
+| bench_draw | fills/lines/circles+print | ~0.23 fps (16 flips/4.5K frames) | 17 flips (+6%) |
+| demo_video (api) | | ~0.27 fps (20 flips/4.5K frames) | 22 flips (+10%) |
 | celeste | parse 27 KB | ~3,540 frames ≈ 59 s |
 | celeste | `_init` VM rate | ~330-400 ops/s (1,848 ops total) |
 | celeste | first title `_draw` | multi-minute C grind (full-screen `map()`), 0 flips in budget |

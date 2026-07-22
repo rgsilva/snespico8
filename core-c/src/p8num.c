@@ -9,8 +9,10 @@
 #include <stddef.h>
 #include "p8num.h"
 
-static uint32_t U(long v) { return (uint32_t)v; }
-static long S(uint32_t v) { return (long)(int32_t)v; }
+/* M9 T1: macros, not functions -- at -O0 Calypsi compiled these identity
+** casts as far calls, three per p8fix_add */
+#define U(v) ((uint32_t)(v))
+#define S(v) ((long)(int32_t)(v))
 
 long p8fix_add(long a, long b) { return S(U(a) + U(b)); }
 long p8fix_sub(long a, long b) { return S(U(a) - U(b)); }
@@ -20,9 +22,12 @@ long p8fix_fromint(long i) { return S((uint32_t)i << 16); }
 
 long p8fix_toint(long a)
 {
-  /* floor()>>16 without impl-defined signed shifts: subtract the
-     fraction, then divide exactly */
-  return (a - (long)(U(a) & 0xFFFFu)) / 65536L;
+  /* floor()>>16: the high word read as SIGNED 16-bit is the floor for
+     all 2^32 inputs (fixfuzz proves it exhaustively). int16_t, not int:
+     host int is 32-bit and would not sign-extend. M9 T1 -- the old
+     (a - frac) / 65536L form cost a _Div32 call per integer argument,
+     and -O2 does not strength-reduce it. */
+  return (long)(int16_t)(U(a) >> 16);
 }
 
 long p8fix_mul(long a, long b)
@@ -68,7 +73,19 @@ long p8fix_div(long a, long b)
   neg = (a < 0) != (b < 0);
   ua = (a < 0) ? 0u - U(a) : U(a);
   ub = (b < 0) ? 0u - U(b) : U(b);
-  q = udiv48(ua >> 16, ua << 16, ub);
+  if ((ub & (ub - 1u)) == 0) {
+    /* M9 T1: pow2 divisor. The low 32 bits of the 48-bit quotient
+       (ua<<16)/2^k are a pure shift; uint32 shifts drop the same high
+       bits udiv48's wrap drops, so this is exact (fixfuzz: all 32 k,
+       both signs, vs the bit-serial path). x/1, x/2, x/0x8000 etc. */
+    int k = 0;
+    uint32_t t = ub;
+    while (t >>= 1)
+      k++;
+    q = (k >= 16) ? (ua >> (k - 16)) : (ua << (16 - k));
+  } else {
+    q = udiv48(ua >> 16, ua << 16, ub);
+  }
   return S(neg ? 0u - q : q);
 }
 
@@ -311,11 +328,19 @@ long p8fix_bnot(long a) { return S(~U(a)); }
 
 long p8fix_lshr(long a, long b);
 
+/* Shift counts, z8lua-exact (M9 fixfuzz/numvec findings): the count is
+** the FLOORED int of b, negated as an int for negative counts -- z8lua
+** casts b to int once (arithmetic >>16 = floor) and does `y < 0 ?
+** other_dir(x, -y)`. The old code here instead recomputed the count as
+** toint(unm(b)), which (a) trunc-rounds fractional negatives (shl by
+** -1.5 gave >>1, oracle wants >>2) and (b) never terminated on
+** b = 0x8000.0000, whose fix32 negation is itself (stack overflow on
+** hardware). Non-recursive form: n <= -32 shifts everything out. */
 long p8fix_shl(long a, long b)
 {
   long n = p8fix_toint(b);
   if (n < 0)
-    return p8fix_lshr(a, p8fix_unm(b));
+    return (n <= -32) ? 0 : S(U(a) >> -n);   /* z8: lshr(x, -y) */
   return (n >= 32) ? 0 : S(U(a) << n);
 }
 
@@ -323,7 +348,7 @@ long p8fix_shr(long a, long b)
 {
   long n = p8fix_toint(b);
   if (n < 0)
-    return p8fix_shl(a, p8fix_unm(b));
+    return (n <= -32) ? 0 : S(U(a) << -n);   /* z8: x << -y */
   if (n > 31)
     n = 31;
   /* arithmetic shift without impl-defined behavior */
@@ -334,7 +359,7 @@ long p8fix_lshr(long a, long b)
 {
   long n = p8fix_toint(b);
   if (n < 0)
-    return p8fix_shl(a, p8fix_unm(b));
+    return (n <= -32) ? 0 : S(U(a) << -n);   /* z8: x << -y */
   return (n >= 32) ? 0 : S(U(a) >> n);
 }
 
