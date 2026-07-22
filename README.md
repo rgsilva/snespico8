@@ -95,19 +95,6 @@ target: [docs/BUILDING.md](docs/BUILDING.md).
 | [docs/formats/](docs/formats/) | format notes: `.p8`/`.p8.png` cart decode, the SFX/music memory layout |
 | [docs/M9-perf-plan.md](docs/M9-perf-plan.md) | the M9 perf log (analysis, tiers, results, the T7 addendum) |
 
-## Layout
-
-```
-core-c/          the console in portable C: z8lua + the PICO-8 API. Builds
-                 runp8 (host oracle/runner) and, via Calypsi, the SNES core.
-snes/            the SNES ROM: boot/game loop, Mode 7 video, SRAM heap,
-                 SPC-700 driver, CPU-math-unit helpers, Mesen harnesses.
-                 `make release` -> build/snespico8.sfc
-carts/           micro-cart test suite (BBS carts stay local: not ours to ship)
-docs/            documentation + the design brief
-tools/           third-party checkouts (Calypsi, z8lua, ...) — gitignored
-```
-
 ## Built with AI, for fun
 
 This project was built with AI assistance (Anthropic's Claude), as an
