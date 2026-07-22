@@ -20,10 +20,14 @@ docs/     project brief, build guide, format + design notes
 ## Documentation
 
 - [`docs/PROJECT.md`](docs/PROJECT.md) — full brief, constraints, milestone log.
+- [`docs/INTERNALS.md`](docs/INTERNALS.md) — how it works: the shared core, Mode 7, the SPC, the Calypsi minefield and its fences.
+- [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) — what runs, how fast, API coverage, pinned edge semantics.
+- [`docs/PERF.md`](docs/PERF.md) — where the time goes; the measurement rig; rules of the road.
+- [`docs/FUTURE.md`](docs/FUTURE.md) — T6, hardware bring-up, SA-1, the backlog.
 - [`docs/BUILDING.md`](docs/BUILDING.md) — prerequisites and every make target.
 - [`docs/cart-formats.md`](docs/cart-formats.md) — `.p8` and `.p8.png` (stego + pxa).
 - [`docs/audio-format.md`](docs/audio-format.md) — SFX/music memory format + timing.
-- [`docs/M9-perf-plan.md`](docs/M9-perf-plan.md) — the M9 performance plan (audit, tiers, validation).
+- [`docs/M9-perf-plan.md`](docs/M9-perf-plan.md) — the M9 milestone log (audit, tiers, results table, validation).
 
 ## Milestones
 
@@ -39,7 +43,7 @@ docs/     project brief, build guide, format + design notes
 | M9 | perf passes | 🔶 |
 | M10 | real hardware | ⬜ |
 | M11 | SA-1 tier | ⬜ |
-| M12 | documentation pass | 🔶 |
+| M12 | documentation pass | ✅ |
 | M13 | demo ROM | ✅ |
 | M14 | CI (host suites + builds the ROM) + release | ✅ |
 
