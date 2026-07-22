@@ -650,10 +650,12 @@ static void name (VMCtx *v, Instruction i) { \
 
 static void vmop_move (VMCtx *v, Instruction i) {
   lua_State *L = v->L;
+  (void)L;  /* only the debug-build setobj checks use it */
   setobjs2s(L, vRA(i), vRB(i));
 }
 static void vmop_loadk (VMCtx *v, Instruction i) {
   lua_State *L = v->L;
+  (void)L;  /* only the debug-build setobj checks use it */
   TValue *rb = v->k + GETARG_Bx(i);
   setobj2s(L, vRA(i), rb);
 }
@@ -671,6 +673,7 @@ static void vmop_loadnil (VMCtx *v, Instruction i) {
 }
 static void vmop_getupval (VMCtx *v, Instruction i) {
   lua_State *L = v->L;
+  (void)L;  /* only the debug-build setobj checks use it */
   int b = GETARG_B(i);
   setobj2s(L, vRA(i), v->cl->upvals[b]->v);
 }
@@ -724,7 +727,98 @@ DEF_UNARY(vmop_peek,  luai_numpeek,  TM_PEEK)
 DEF_UNARY(vmop_peek2, luai_numpeek2, TM_PEEK2)
 DEF_UNARY(vmop_peek4, luai_numpeek4, TM_PEEK4)
 
+#define dojumpV(i,e) \
+  { int a = GETARG_A(i); \
+    if (a > 0) luaF_close(L, v->ci->u.l.base + a - 1); \
+    v->ci->u.l.savedpc += GETARG_sBx(i) + e; }
+#define donextjumpV()	{ i = *v->ci->u.l.savedpc; dojumpV(i, 1) }
+
+static void vmop_eq (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  TValue *rb = vRKB(i);
+  TValue *rc = vRKC(i);
+  ProtectV(
+    if (cast_int(equalobj(L, rb, rc)) != GETARG_A(i))
+      v->ci->u.l.savedpc++;
+    else
+      donextjumpV();
+  )
+}
+static void vmop_lt (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  ProtectV(
+    if (luaV_lessthan(L, vRKB(i), vRKC(i)) != GETARG_A(i))
+      v->ci->u.l.savedpc++;
+    else
+      donextjumpV();
+  )
+}
+static void vmop_le (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  ProtectV(
+    if (luaV_lessequal(L, vRKB(i), vRKC(i)) != GETARG_A(i))
+      v->ci->u.l.savedpc++;
+    else
+      donextjumpV();
+  )
+}
+static void vmop_test (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  StkId ra = vRA(i);
+  if (GETARG_C(i) ? l_isfalse(ra) : !l_isfalse(ra))
+    v->ci->u.l.savedpc++;
+  else
+    donextjumpV();
+}
+static void vmop_testset (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  StkId ra = vRA(i);
+  TValue *rb = vRB(i);
+  if (GETARG_C(i) ? l_isfalse(rb) : !l_isfalse(rb))
+    v->ci->u.l.savedpc++;
+  else {
+    setobjs2s(L, ra, rb);
+    donextjumpV();
+  }
+}
+static void vmop_forprep (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  StkId ra = vRA(i);
+  const TValue *init = ra;
+  const TValue *plimit = ra+1;
+  const TValue *pstep = ra+2;
+  if (!tonumber(init, ra))
+    luaG_runerror(L, LUA_QL("for") " initial value must be a number");
+  else if (!tonumber(plimit, ra+1))
+    luaG_runerror(L, LUA_QL("for") " limit must be a number");
+  else if (!tonumber(pstep, ra+2))
+    luaG_runerror(L, LUA_QL("for") " step must be a number");
+  setnvalue(ra, luai_numsub(L, nvalue(ra), nvalue(pstep)));
+  v->ci->u.l.savedpc += GETARG_sBx(i);
+}
+static void vmop_tforcall (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  StkId ra = vRA(i);
+  StkId cb = ra + 3;  /* call base */
+  setobjs2s(L, cb+2, ra+2);
+  setobjs2s(L, cb+1, ra+1);
+  setobjs2s(L, cb, ra);
+  L->top = cb + 3;  /* func. + 2 args (state and index) */
+  ProtectV(luaD_call(L, cb, GETARG_C(i), 1));
+  L->top = v->ci->top;
+}
+static void vmop_tforloop (VMCtx *v, Instruction i) {
+  lua_State *L = v->L;
+  (void)L;  /* only the debug-build setobj checks use it */
+  StkId ra = vRA(i);
+  if (!ttisnil(ra + 1)) {  /* continue loop? */
+    setobjs2s(L, ra, ra + 1);  /* save control variable */
+    v->ci->u.l.savedpc += GETARG_sBx(i);  /* jump back */
+  }
+}
+
 void luaV_execute (lua_State *L) {
+
   VMCtx v;
   v.L = L;
   v.ci = L->ci;
@@ -887,45 +981,19 @@ void luaV_execute (lua_State *L) {
         dojump(i, 0);
       )
       vmcase(OP_EQ,
-        TValue *rb = RKB(i);
-        TValue *rc = RKC(i);
-        Protect(
-          if (cast_int(equalobj(L, rb, rc)) != GETARG_A(i))
-            v.ci->u.l.savedpc++;
-          else
-            donextjump();
-        )
+        vmop_eq(&v, i);
       )
       vmcase(OP_LT,
-        Protect(
-          if (luaV_lessthan(L, RKB(i), RKC(i)) != GETARG_A(i))
-            v.ci->u.l.savedpc++;
-          else
-            donextjump();
-        )
+        vmop_lt(&v, i);
       )
       vmcase(OP_LE,
-        Protect(
-          if (luaV_lessequal(L, RKB(i), RKC(i)) != GETARG_A(i))
-            v.ci->u.l.savedpc++;
-          else
-            donextjump();
-        )
+        vmop_le(&v, i);
       )
       vmcase(OP_TEST,
-        if (GETARG_C(i) ? l_isfalse(ra) : !l_isfalse(ra))
-            v.ci->u.l.savedpc++;
-          else
-          donextjump();
+        vmop_test(&v, i);
       )
       vmcase(OP_TESTSET,
-        TValue *rb = RB(i);
-        if (GETARG_C(i) ? l_isfalse(rb) : !l_isfalse(rb))
-          v.ci->u.l.savedpc++;
-        else {
-          setobjs2s(L, ra, rb);
-          donextjump();
-        }
+        vmop_testset(&v, i);
       )
       vmcase(OP_CALL,
         int b = GETARG_B(i);
@@ -1000,26 +1068,10 @@ void luaV_execute (lua_State *L) {
         }
       )
       vmcase(OP_FORPREP,
-        const TValue *init = ra;
-        const TValue *plimit = ra+1;
-        const TValue *pstep = ra+2;
-        if (!tonumber(init, ra))
-          luaG_runerror(L, LUA_QL("for") " initial value must be a number");
-        else if (!tonumber(plimit, ra+1))
-          luaG_runerror(L, LUA_QL("for") " limit must be a number");
-        else if (!tonumber(pstep, ra+2))
-          luaG_runerror(L, LUA_QL("for") " step must be a number");
-        setnvalue(ra, luai_numsub(L, nvalue(ra), nvalue(pstep)));
-        v.ci->u.l.savedpc += GETARG_sBx(i);
+        vmop_forprep(&v, i);
       )
       vmcasenb(OP_TFORCALL,
-        StkId cb = ra + 3;  /* call v.base */
-        setobjs2s(L, cb+2, ra+2);
-        setobjs2s(L, cb+1, ra+1);
-        setobjs2s(L, cb, ra);
-        L->top = cb + 3;  /* func. + 2 args (state and index) */
-        Protect(luaD_call(L, cb, GETARG_C(i), 1));
-        L->top = v.ci->top;
+        vmop_tforcall(&v, i);
         i = *(v.ci->u.l.savedpc++);  /* go to next instruction */
         ra = RA(i);
         lua_assert(GET_OPCODE(i) == OP_TFORLOOP);
@@ -1027,10 +1079,7 @@ void luaV_execute (lua_State *L) {
       )
       vmcase(OP_TFORLOOP,
         l_tforloop:
-        if (!ttisnil(ra + 1)) {  /* continue loop? */
-          setobjs2s(L, ra, ra + 1);  /* save control variable */
-           v.ci->u.l.savedpc += GETARG_sBx(i);  /* jump back */
-        }
+        vmop_tforloop(&v, i);
       )
       vmcase(OP_SETLIST,
         int n = GETARG_B(i);
