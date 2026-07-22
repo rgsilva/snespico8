@@ -60,7 +60,10 @@ unchanged.
 ## The measurement rig (use it, don't guess)
 
 - `make -C snes bench-vm|draw|flip|api|celeste` — live ops/flip slopes,
-  window summaries, plateau/panic detection, hard frame caps.
+  window summaries, plateau/panic detection, hard frame caps. For VM
+  work, `bench_tab.p8` is the gameplay-shaped probe (table reads +
+  tests + adds in Celeste's opcode-histogram proportions); `runp8 -S`
+  prints the per-opcode histogram that justifies it.
 - `make -C snes prof` — one PC sample per frame via `emu.getState()`,
   symbolized by `tools/profsym.py` against a per-run snapshot of the map
   (Calypsi renumbers `?L` statics every build; never symbolize against a
