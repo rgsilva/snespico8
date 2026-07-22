@@ -1,9 +1,12 @@
 # Where snespico8 goes next
 
-M9 is complete (T0–T6; `docs/M9-perf-plan.md` has the full story,
-including the closing finding: the VM on stock hardware is memory-bound —
-the per-opcode split landed, proved it, and stays as the safer shape).
-What remains is polish, hardware, and the SA-1 tier.
+M9 is complete (T0–T6 plus the T7 reevaluation addendum;
+`docs/M9-perf-plan.md` has the full story. T6's finding stands — the VM
+floor is memory-bound — but T7 proved a third of the op budget sat in
+removable overhead *above* that floor: cross-call factoring, looped
+shift lowering, far-call round-trips, iteration ceremony. Gameplay-
+shaped VM throughput +72%, all() iteration +73% on top). What remains
+is polish, hardware, and the SA-1 tier.
 
 ## Attack the memory-bound floor anyway (stock-VM ideas that survive T6)
 
@@ -50,10 +53,6 @@ call chains outright. Ranked by expected payoff x confidence:
   parse is `_ValueSwitch16` dispatch in llex/lparser (pinned -O0 by
   miscompiles #1/#2). Calypsi can lower switches as jump tables without
   raising the opt level. Never measured — the cheapest experiment here.
-- **`all()`/`foreach` length caching.** `all_iter` calls `lua_rawlen` (a
-  binary search) every iteration — and TFORCALL-driven iteration is 17%
-  of Celeste gameplay. Cacheable if the mutation-during-iteration
-  semantics survive the oracle; pin with directed vectors first.
 - **Presentation polish:** vblank frame pacing once anything sustains
   30+ fps; splitting the 16 KB VRAM DMA across natural vblanks to kill
   the force-blank flicker (pure cosmetics, zero risk).

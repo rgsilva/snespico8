@@ -262,3 +262,64 @@ T1+T2 plausibly lands in the 400–700 cycles/op range → **4–8K ops/sec**
 (30K ops x 30 fps) — out of reach on stock hardware; that stays M11 (SA-1).
 The honest M9 outcome: simple carts playable, API-heavy carts at real frame
 rates via the flip fix, Celeste demoted from slideshow to slow motion.
+
+## T7 — the reevaluation pass (2026-07-22, post-M9 addendum)
+
+M9 closed on the memory-bound verdict: -O2 on the giant switch (T2,
++1.8%) and the per-op split (T6, +1.7%) both null. A fresh read of the
+T6-final *listings* — not the C — showed why both A/Bs were blind:
+every configuration ever measured carried the same removable overhead
+classes, so no experiment isolated them. The verdict survives (the
+TValue traffic is real); what it hid was ~1/3 of the per-op budget in
+costs that were never on either side of an A/B ledger.
+
+| inc | change | bench_tab | cumulative |
+|-----|--------|-----------|------------|
+| — | T6 final baseline | 1,012 ops/s | — |
+| 1 | `--no-cross-call --no-interprocedural-cross-jump` (all runtime TUs) | 1,158 | +14.4% |
+| 2 | byte-wise GETARG decode + shell `ra` sink + `P8_NO_HOOKS` (+ release ROMs drop the vmops counter) | 1,453 | +43.6% |
+| 3 | table/compare far-call diet + `ltable_get.c` split (`luaH_get` finally at -O2) | 1,737 | +71.6% |
+| 4 | direct-table `all()`/`foreach` step | bench_all: 380 → 659 (+73%) | tab: 1,736 (flat) |
+
+The four overhead classes, with the evidence that found them:
+
+1. **Calypsi cross-call factoring** (inc1): 1,187 `jsl`→helper call
+   sites in `lua_lvm.lst` alone at `-O2 --speed`, ~5 on the dispatch
+   path of every op, 14 cycles of pure call overhead each.
+   `--no-cross-call` existed all along; nothing ever tried it. Cost:
+   ROM back to 512 KB (code expands past the 256 KB pad boundary).
+2. **Looped constant shifts in operand decode** (inc2): Calypsi lowers
+   32-bit `>>14` as a counted `lsr/ror` loop (~150 cycles); the shell
+   also computed `ra = RA(i)` (looped `>>6` + a ×6) for every op even
+   though the T6 split ops recompute `vRA` themselves, burned a far
+   RMW on the vmops mailbox counter in *release* ROMs, and tested the
+   hook mask per op. `P8_BYTEDECODE` decodes fields from bytes — the
+   host suite runs with it forced on, pinning the byte decoder against
+   portable-compiled carts before Mesen is ever involved.
+3. **Far-call round-trips on the table path** (inc3): `luaH_get` paid
+   `p8fix_toint` + `p8fix_fromint` per number key just to test
+   integer-ness (`luai_numisint` is a 16-bit compare); EQ/LT/LE far-
+   called into `luaV_*` for the dominant number-number case; and the
+   whole lookup half of ltable sat at -O0 because miscompile #4 pinned
+   the TU — the split moves `luaH_get/getint/getstr/getn` into
+   `ltable_get.c`, which joins P8HOT.
+4. **API-layer iteration ceremony** (inc4): every `all()` step paid a
+   `rawlen` binary search + `rawgeti`/`rawequal` API ceremony +
+   toint/fromint far calls. The T0 profile called this out; T7
+   collected it.
+
+The same pass found two real semantics bugs, both now pinned against
+the real console by new realvec vectors: `str[pos]` indexed with the
+raw fix32 bits (every normal index returned nil; and the oracle ruled
+the edges: out-of-range is NIL — the console's `str[pos]` is *not*
+`sub(str,pos,pos)` at the edges), and `foreach` skipped the successor
+of an element deleted mid-callback (the console's foreach is
+`all()`-based and revisits: `fe1 123`, not `13`).
+
+Where this leaves the ceiling: the gameplay-shaped probe runs +72%
+over T6 (1,012 → 1,737 ops/s) and all()-heavy stretches +73% on top of
+their old rate; release ROMs shed the vmops counter for a further ~2%
+nobody benches. The memory-bound floor is still the floor — SA-1 (M11)
+remains the next VM multiplier — and every T7 gain carries over to it
+unchanged. The lesson T7 adds to the M9 rules: a null A/B only rules
+out what actually varied between its two sides. Read the listings.
