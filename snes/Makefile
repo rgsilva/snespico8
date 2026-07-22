@@ -21,8 +21,14 @@ CORE := ../core-c/src
 # at its fixed MB_VMOPS mailbox slot ($7E:F00C) so the bench harness samples
 # it live and link-layout changes can never move it.
 P8OPT ?= -O0
+# M9 T7: --no-cross-call/--no-interprocedural-cross-jump — Calypsi factors
+# common 3-5 instruction sequences into jsl/rtl helpers even at -O2 --speed
+# (1,187 call sites in lua_lvm.lst alone, 14 cycles of pure call overhead
+# each, ~5 of them on the VM dispatch path per op). Disabling trades ROM
+# size for cycles everywhere; measured on bench_tab (docs/M9-perf-plan.md).
 P8CFLAGS = --core=65816 --target=snes --code-model=large --data-model=large \
-           --no-ppu-mul $(P8OPT) -I $(CORE) -I . \
+           --no-ppu-mul --no-cross-call --no-interprocedural-cross-jump \
+           $(P8OPT) -I $(CORE) -I . \
            -DP8_VMOPS_ADDR=0x7ef00cul -DP8_HWMATH --list-file=$(@:.o=.lst)
 LUAOBJS := lapi lauxlib lbaselib lcode lctype lcorolib ldebug ldo ldump \
            lfunc lgc llex lmem lobject lopcodes lparser lstate lstring \
