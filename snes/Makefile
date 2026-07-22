@@ -37,6 +37,11 @@ WLASPC := $(PVBIN)/wla-spc700
 WLALINK := $(PVBIN)/wlalink
 
 MESEN := /Applications/Mesen.app/Contents/MacOS/Mesen
+# Mesen's testrunner kills scripts at a default wall limit; long runs
+# (celeste: ~1 min emulated parse, slower under host load) pass an
+# explicit --timeout in wall seconds. Short self-capping harnesses
+# (p8bench/p8prof stop themselves) don't need it.
+MESENLONG := $(MESEN) --testrunner --timeout=1800
 
 MODEL := --code-model=large --data-model=large
 OPT ?= -O2
@@ -86,6 +91,36 @@ MENUCARTS ?= ../core-c/tests/carts/m7_input.p8 ../core-c/tests/carts/m6_demo.p8 
 $(BUILD)/cart_hello.h: $(CART) tools/cart2c.py tools/p8png.py FORCE | $(BUILD)
 	python3 tools/cart2c.py $(CART) $@ $(FRAMES) $(INPUT)
 
+# ---- M9 T2: per-TU optimization levels ------------------------------
+# The hot TUs (the plan's list: VM, tables, GC, strings, calls, fix32,
+# gfx, API) build -O2 --speed (Calypsi defaults to --space even at -O2).
+# llex/lparser and everything else stay -O0: both known -O2 miscompiles
+# live in the lexer (bugs/), and parse is cart-load-only. Gated by the
+# roulette battery (core-c/tests/roulette.sh) because Calypsi allocator
+# failures are link-layout-sensitive, not deterministic.
+P8OPT_HOT ?= -O2 --speed
+# P8HOT / P8HOT1 are overridable for miscompile bisection: build with
+# e.g. P8HOT="lua_lvm p8num" P8HOT1= to optimize only those TUs
+# (rm build/p8obj between configs -- opt flags are not a make dep).
+# lua_ltable is NOT in the -O2 set: at -O2 it miscompiles an allocation
+# size during lua_newstate ("memory allocation error: block too big"
+# panic at boot -- bisected 2026-07-21, all other hot TUs pass).
+P8HOT ?= lua_lvm lua_lgc lua_lstring lua_ldo p8num p8 p8gfx
+P8HOT1 ?=
+$(addprefix $(BUILD)/p8obj/,$(addsuffix .o,$(P8HOT))): P8OPT = $(P8OPT_HOT)
+$(addprefix $(BUILD)/p8obj/,$(addsuffix .o,$(P8HOT1))): P8OPT = -O1
+
+# M9 T2 roulette: PERTURB=n links a pad object early in the link order
+# (n dummy functions + a byte array), shifting every downstream address.
+# One green parity run proves nothing when the failure mode is per-layout
+# roulette; parity must hold across several perturbed layouts.
+PERTURB ?= 0
+$(BUILD)/p8obj/pad.c: tools/mkpad.py FORCE | $(BUILD)/p8obj
+	python3 tools/mkpad.py $@ $(PERTURB)
+
+$(BUILD)/p8obj/pad.o: $(BUILD)/p8obj/pad.c
+	$(P8CC) -o $@ $< $(P8CFLAGS)
+
 $(BUILD)/p8obj:
 	mkdir -p $(BUILD)/p8obj
 
@@ -133,7 +168,7 @@ $(BUILD)/p8obj/mailbox.o: calypsi/mailbox.c calypsi/mailbox.h | $(BUILD)/p8obj
 $(BUILD)/p8obj/header.o: calypsi/header.s | $(BUILD)/p8obj
 	$(P8AS) -o $@ $< --core=65816 --target=SNES --code-model=large --data-model=large
 
-$(BUILD)/p8.raw: $(P8LUA_O) $(P8CORE_O) $(BUILD)/p8obj/p8main.o \
+$(BUILD)/p8.raw: $(BUILD)/p8obj/pad.o $(P8LUA_O) $(P8CORE_O) $(BUILD)/p8obj/p8main.o \
                  $(BUILD)/p8obj/p8heap.o $(BUILD)/p8obj/p8spc.o \
                  $(BUILD)/p8obj/stubs.o \
                  $(BUILD)/p8obj/mailbox.o $(BUILD)/p8obj/header.o
@@ -307,7 +342,8 @@ bench-flip:
 bench-api:
 	$(MAKE) bench BENCHCART=../core-c/tests/carts/demo_video.p8
 bench-celeste:
-	$(MAKE) bench BENCHCART=../core-c/tests/carts-external/celeste.p8
+	$(MAKE) p8 CART=../core-c/tests/carts-external/celeste.p8 FRAMES=1000000000
+	$(MESENLONG) $(BUILD)/p8.sfc test/p8bench.lua
 
 # PC-sampling profile of whatever ROM is in build/ (run right after a bench
 # target so the ROM matches): one emu.getState() PC sample per frame, then
@@ -325,7 +361,7 @@ prof:
 .PHONY: test-celeste
 test-celeste:
 	$(MAKE) p8 CART=../core-c/tests/carts-external/celeste.p8
-	$(MESEN) --testrunner $(BUILD)/p8.sfc test/celeste.lua
+	$(MESENLONG) $(BUILD)/p8.sfc test/celeste.lua
 
 $(BUILD):
 	mkdir -p $(BUILD)

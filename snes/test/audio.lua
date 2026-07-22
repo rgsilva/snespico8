@@ -4,8 +4,8 @@
 -- patterns, the whole path (cart Lua -> core sfx()/music() -> mailbox ->
 -- SPC sequencer) works. The game loop finishes quickly (a few frames) but
 -- the SPC keeps playing on its own, so we sample it well past that.
-local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF010
-local RING_SIZE = 3552
+local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF020
+local RING_SIZE = 3536
 local frames, sawMagic, readIndex, line = 0, false, 0, ""
 local patset, masknz = {}, false
 

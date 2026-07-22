@@ -8,8 +8,8 @@
 --
 -- The launch tap is time-boxed then released: run_menu wait_release()s the
 -- launch button, so holding it would deadlock. snesWorkRam: $7F -> 0x10000+.
-local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF010
-local RING_SIZE = 3552
+local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF020
+local RING_SIZE = 3536
 local PX = 0x14300                 -- m7_input dot x, poked each frame
 
 local function word(a) return emu.read16(a, emu.memType.snesWorkRam) end

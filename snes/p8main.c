@@ -33,6 +33,8 @@
 #else
 extern unsigned long p8_vmops;
 #endif
+/* p8heap telemetry (p8heap.c), mirrored into the mailbox per flip */
+extern unsigned long p8heap_peak_used, p8heap_max_ok, p8heap_max_fail;
 
 /* --- hardware register access (large data model = 24-bit pointers) --- */
 #define REG8(a)  (*(volatile uint8_t *)(unsigned long)(a))
@@ -158,6 +160,10 @@ static void snes_flip(void *ud)
 #ifndef P8_VMOPS_ADDR
   MB_VMOPS = p8_vmops;   /* live-at-mailbox builds update it per op */
 #endif
+  /* p8heap telemetry at fixed addresses (celeste.lua reads them) */
+  MB_HEAP_PEAK = p8heap_peak_used;
+  MB_HEAP_MAXOK = p8heap_max_ok;
+  MB_HEAP_MAXFAIL = p8heap_max_fail;
 #ifdef P8_PARITY
   /* M4 parity: same two-region hash runp8 emits with -H. Gated because
      the 32 KB scan is slow at -O0 and would push the plain demo/boot ROM
@@ -501,12 +507,18 @@ static void run_cart(const MultiCart *mc)
 }
 #endif /* P8_MULTICART */
 
+/* M9 roulette anchor (build/p8obj/pad.c, tools/mkpad.py): one real call
+** keeps the PERTURB link-layout pad from being stripped. Identity (and
+** near-free) in normal PERTURB=0 builds; behavior-identical at any n. */
+extern long p8_pad_probe(long x);
+
 int main(void)
 {
   lua_State *L;
   unsigned long sram;
   long frame;                 /* long: cart_frames can exceed the 16-bit int range */
 
+  (void)p8_pad_probe(1);
   mb_init();
   mb_puts("boot\n");
   video_init();

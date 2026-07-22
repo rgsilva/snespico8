@@ -6,8 +6,8 @@
 --
 -- Timing note: run_pause's draw+flip briefly blocks its input poll (like the
 -- cart menu), so the taps are spaced well past each redraw.
-local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF010
-local RING_SIZE = 3552
+local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF020
+local RING_SIZE = 3536
 local PFIRED = 0x14300                 -- $7F:4300 callback marker
 
 local function word(a) return emu.read16(a, emu.memType.snesWorkRam) end

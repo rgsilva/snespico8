@@ -3,10 +3,12 @@
 -- prints periodic status, and screenshots when the title flips. No pixel
 -- asserts (this is a real cart) — the goal is: does it parse, init, and
 -- draw, and does the heap prediction (max_fail=0) hold on real hardware.
-local MB_MAGIC, MB_STATUS, MB_WINDEX, MB_FLIPS, MB_RING = 0xF000, 0xF002, 0xF004, 0xF00A, 0xF010
-local RING_SIZE = 3552
--- p8heap counters (snesWorkRam offsets, from build/p8.map)
-local MAX_FAIL, MAX_OK, PEAK, VMOPS = 0x613B, 0x613F, 0x6143, 0x6173
+local MB_MAGIC, MB_STATUS, MB_WINDEX, MB_FLIPS, MB_RING = 0xF000, 0xF002, 0xF004, 0xF00A, 0xF020
+local RING_SIZE = 3536
+-- p8heap counters + vmops at their FIXED mailbox slots (mailbox.h) --
+-- the old version read .bss offsets copied from a stale build/p8.map
+-- and printed garbage after any relink (the M9 drift-trap class)
+local PEAK, MAX_OK, MAX_FAIL, VMOPS = 0xF010, 0xF014, 0xF018, 0xF00C
 
 local frames, sawMagic, readIndex, line, shots = 0, false, 0, "", 0
 local function w16(a) return emu.read16(a, emu.memType.snesWorkRam) end

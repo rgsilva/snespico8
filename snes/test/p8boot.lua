@@ -7,8 +7,8 @@
 --   mailbox $7E:F000  -> 0xF000
 --   pico screen $7F:6000 -> 0x16000
 local MB_MAGIC, MB_STATUS = 0xF000, 0xF002
-local MB_WINDEX, MB_FLIPS, MB_VMOPS, MB_RING = 0xF004, 0xF00A, 0xF00C, 0xF010
-local RING_SIZE = 3552
+local MB_WINDEX, MB_FLIPS, MB_VMOPS, MB_RING = 0xF004, 0xF00A, 0xF00C, 0xF020
+local RING_SIZE = 3536
 local SCREEN = 0x16000
 
 local frames, sawMagic, readIndex, line = 0, false, 0, ""

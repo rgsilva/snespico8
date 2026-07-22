@@ -6,8 +6,8 @@
 --   (b) in tune: the DSP pitch P the driver programmed (stashed at
 --       $30+voice*2) matches pitch_tab = round(440*2^((pitch-33)/12)*4.096)
 --       for each note -- i.e. the notes are at the right frequency.
-local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF010
-local RING_SIZE = 3552
+local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF020
+local RING_SIZE = 3536
 -- voices 0..3 were keyed with these PICO-8 pitches:
 local PITCH = {24, 36, 45, 52}
 local frames, sawMagic, readIndex, line = 0, false, 0, ""

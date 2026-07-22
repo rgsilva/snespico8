@@ -10,7 +10,12 @@ set -e
 cd "$(dirname "$0")/.."          # -> core-c/
 ROOT=$(cd .. && pwd)
 SNES="$ROOT/snes"
-MESEN=/Applications/Mesen.app/Contents/MacOS/Mesen
+# --timeout: Mesen's DEFAULT testrunner wall limit kills slow runs (the
+# harness scripts self-stop on EMULATED frame counts, so under host
+# contention a healthy run can starve mid-output and fail as a bogus
+# 0-line/0-flip diff). 900 s per run only catches true hangs.
+MESEN="/Applications/Mesen.app/Contents/MacOS/Mesen"
+MESENTO="--timeout=900"
 CAL="$ROOT/tools/calypsi-65816-5.17/bin/cc65816"
 
 if [ ! -x "$MESEN" ] || [ ! -x "$CAL" ]; then
@@ -36,10 +41,11 @@ run_one() {
   ./build/runp8 "$cart" -n 0 2>&1 >/dev/null | grep -v '^DONE' | eval "$post" > "$ref"
 
   # build + run the SNES ROM with this cart embedded (no hashing needed;
-  # printh is captured before the flip loop)
+  # printh is captured before the flip loop). SNESPARITY_MAKEFLAGS lets
+  # the M9 roulette battery inject PERTURB=n link-layout perturbations.
   rm -f "$SNES/build/p8obj/p8main.o"
-  make -C "$SNES" p8 CART="$cart" P8MAINDEF= >/dev/null 2>&1
-  "$MESEN" --testrunner "$SNES/build/p8.sfc" "$SNES/test/parity.lua" 2>/dev/null \
+  make -C "$SNES" p8 CART="$cart" P8MAINDEF= $SNESPARITY_MAKEFLAGS >/dev/null 2>&1
+  "$MESEN" --testrunner $MESENTO "$SNES/build/p8.sfc" "$SNES/test/parity.lua" 2>/dev/null \
     | strip_status | eval "$post" > "$got"
 
   if diff -u "$ref" "$got" >/dev/null 2>&1; then
@@ -83,8 +89,8 @@ run_hash() {
   ./build/runp8 "$cart" -H -n "$frames" $iarg 2>/dev/null | grep '^HASH ' > "$ref"
   rm -f "$SNES/build/p8obj/p8main.o"
   make -C "$SNES" p8 CART="$cart" FRAMES="$frames" INPUT="$input" \
-    P8MAINDEF=-DP8_PARITY >/dev/null 2>&1
-  "$MESEN" --testrunner "$SNES/build/p8.sfc" "$SNES/test/parity.lua" 2>/dev/null \
+    P8MAINDEF=-DP8_PARITY $SNESPARITY_MAKEFLAGS >/dev/null 2>&1
+  "$MESEN" --testrunner $MESENTO "$SNES/build/p8.sfc" "$SNES/test/parity.lua" 2>/dev/null \
     | grep '^OUT HASH' | sed 's/^OUT //' > "$got"
   n=$(wc -l < "$got" | tr -d ' ')
   if [ "$n" -lt "$MINF" ]; then
@@ -98,9 +104,12 @@ run_hash() {
   fi
 }
 
-for g in tests/carts/gfx_lines tests/carts/gfx_shapes tests/carts/gfx_spr \
-         tests/carts/gfx_map tests/carts/gfx_pal_fillp tests/carts/gfx_print; do
-  run_hash "$(basename "$g")" "$(pwd)/$g.p8" 4 ""
+# SNESPARITY_HASHCARTS (basenames) trims the hash-cart list -- the M9
+# roulette battery runs 1-2 carts per perturbed layout, rotating so the
+# battery as a whole still covers all six. m4_input always runs.
+HASHSET="${SNESPARITY_HASHCARTS:-gfx_lines gfx_shapes gfx_spr gfx_map gfx_pal_fillp gfx_print}"
+for g in $HASHSET; do
+  run_hash "$g" "$(pwd)/tests/carts/$g.p8" 4 ""
 done
 run_hash m4_input "$(pwd)/tests/carts/m4_input.p8" 8 "$(pwd)/tests/carts/m4_input.inp"
 

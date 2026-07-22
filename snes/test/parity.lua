@@ -2,8 +2,8 @@
 -- <line>" per printh line and per status line), stop when the ROM sets
 -- STATUS (PASS/PANIC). The orchestrator (core-c/tests/snesparity.sh)
 -- strips the status lines and diffs the remainder against the host core.
-local MB_MAGIC, MB_STATUS, MB_WINDEX, MB_RING = 0xF000, 0xF002, 0xF004, 0xF010
-local RING_SIZE = 3552
+local MB_MAGIC, MB_STATUS, MB_WINDEX, MB_RING = 0xF000, 0xF002, 0xF004, 0xF020
+local RING_SIZE = 3536
 local frames, sawMagic, readIndex, line = 0, false, 0, ""
 
 local function word(a) return emu.read16(a, emu.memType.snesWorkRam) end

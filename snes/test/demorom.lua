@@ -1,8 +1,8 @@
 -- M13 demo-ROM verify: screenshot the curated menu (proves our demo carts
 -- are listed), then launch cart 0 (demo_video) and screenshot it rendering.
 -- Reuses the M8a launch flow (press A after the menu settles).
-local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF010
-local RING_SIZE = 3552
+local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF020
+local RING_SIZE = 3536
 
 local function word(a) return emu.read16(a, emu.memType.snesWorkRam) end
 local function byte(a) return emu.read(a, emu.memType.snesWorkRam) end

@@ -6,8 +6,8 @@
 --   (2) timer: the driver's heartbeat ($6B/$6C) advances on its own;
 --   (3) sequencing: channel 0's row ($44) walks forward and the programmed
 --       pitch ($30) changes -- notes are being keyed autonomously.
-local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF010
-local RING_SIZE = 3552
+local MB_MAGIC, MB_WINDEX, MB_RING = 0xF000, 0xF004, 0xF020
+local RING_SIZE = 3536
 local SFX_WRAM = 0x13200            -- $7F:3200 as a snesWorkRam offset
 local frames, sawMagic, readIndex, line = 0, false, 0, ""
 local hb0, maxrow, pset, patset, masknz = nil, 0, {}, {}, false

@@ -88,15 +88,20 @@ its delta.
   test/bench ROMs, off for release). Honest sizing: at ~2,100 cycles/op this
   is <2.5% — a cleanup, not a lever.
 
-**T2 — selective `-O` per file (the big lever).** Sweep `-O1` / `-O2 --speed`
-on the hot TUs (`lvm ltable lgc lstring ldo p8num p8gfx p8`), keeping
-`llex`/`lparser` (and anything cold) at `-O0` — per-object `OPT` overrides,
-the micropython-snes `MPOPT` pattern. Mixing opt levels per TU is ABI-safe
-(same code/data models). Risk is real: Calypsi's register allocator
-miscompiles large re-entrant interpreter loops in a layout-sensitive,
-per-build-roulette way (see `tools/micropython-snes/DECISIONS.md`), and
-`luaV_execute` is that shape. Gated by the roulette battery (below); if it
-proves fragile, T6 is the paired fallback.
+**T2 — selective `-O` per file. LANDED, with a humbling outcome.** The
+surviving set is `lvm lgc lstring ldo p8num p8 p8gfx` at `-O2 --speed`
+(`P8HOT` in `snes/Makefile`); `lua_ltable` is **pinned -O0** — at -O1 AND
+-O2 it miscompiles an allocation size during `lua_newstate` ("memory
+allocation error: block too big" panic at boot; bisected TU-by-TU, third
+documented Calypsi miscompile, `bugs/` reduction pending). Measured: VM
+only **+1.8%** (1,374 → 1,399 ops/s), rendering flat, ROM **512 → 256 KB**.
+Why so small: the `.lst` shows `luaV_execute` compiles to nearly the same
+code at -O2 as at -O0 — Calypsi's allocator effectively gives up inside
+the giant re-entrant switch body (the exact micropython-snes pathology),
+so the dispatch ceremony never improved. Consequence: **T6's per-opcode
+VM split is promoted from contingency to the real VM lever**; T3/T4 (the
+user-visible fps levers) come first. The -O2 set stays: free +2%, half
+the ROM, and p8num/p8gfx at -O2 are the foundation T3 builds on.
 
 **T3 — gfx inner loops in C.** `p8i_shape_plot`/`p8i_sprite_plot` re-read
 camera (two calls), four clip bytes, the fillp pattern and the draw palette
@@ -165,13 +170,14 @@ already drifted). `make bench-{vm,draw,flip,api,celeste}` + `make prof`
 fences run before every link. Mesen runs ~0.6x real time headless, so a
 bench costs ~2-8 min wall.
 
-| cart | metric | baseline | T1 |
-|------|--------|----------|----|
-| bench_vm | add-loop VM rate | **1,264 ops/s** (M3 continuity confirmed) | **1,374** (+8.7%) |
-| bench_vm | mul-loop VM rate | ~620-670 ops/s | ~690 |
-| bench_flip | game-frame, empty `_draw` | **~44 frames (~730 ms) → 1.37 fps ceiling** | — (T4 target) |
-| bench_draw | fills/lines/circles+print | ~0.23 fps (16 flips/4.5K frames) | 17 flips (+6%) |
-| demo_video (api) | | ~0.27 fps (20 flips/4.5K frames) | 22 flips (+10%) |
+| cart | metric | baseline | T1 | T2 |
+|------|--------|----------|----|----|
+| bench_vm | add-loop VM rate | **1,264 ops/s** (M3 continuity confirmed) | **1,374** (+8.7%) | 1,399 (+1.8%) |
+| bench_vm | mul-loop VM rate | ~620-670 ops/s | ~690 | — |
+| bench_flip | game-frame, empty `_draw` | **~44 frames (~730 ms) → 1.37 fps ceiling** | — (T4 target) | unchanged |
+| bench_draw | fills/lines/circles+print | ~0.23 fps (16 flips/4.5K frames) | 17 flips (+6%) | 16 (noise) |
+| demo_video (api) | | ~0.27 fps (20 flips/4.5K frames) | 22 flips (+10%) | 21 (noise) |
+| ROM size | | 512 KB | 512 KB | **256 KB** |
 | celeste | parse 27 KB | ~3,540 frames ≈ 59 s |
 | celeste | `_init` VM rate | ~330-400 ops/s (1,848 ops total) |
 | celeste | first title `_draw` | multi-minute C grind (full-screen `map()`), 0 flips in budget |
