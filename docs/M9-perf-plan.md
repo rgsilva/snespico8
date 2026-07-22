@@ -103,12 +103,19 @@ VM split is promoted from contingency to the real VM lever**; T3/T4 (the
 user-visible fps levers) come first. The -O2 set stays: free +2%, half
 the ROM, and p8num/p8gfx at -O2 are the foundation T3 builds on.
 
-**T3 — gfx inner loops in C.** `p8i_shape_plot`/`p8i_sprite_plot` re-read
-camera (two calls), four clip bytes, the fillp pattern and the draw palette
-from far RAM *per pixel* — `rectfill(0,0,127,127)` pays it 16K times. Hoist
-per-shape invariants, add a span/byte fill path (two pixels per byte store,
-drawpal precomputed for both nibbles), and a sprite row-blit. Bit-exact
-against the gfxvec goldens; re-profile after T2 first (T2 shifts what's hot).
+**T3 — gfx inner loops in C. LANDED.** Every shape/sprite walker now
+snapshots the draw state once per API call into a `P8Ctx` (camera, clip,
+fillp, palette — `p8int.h`) and plots through it; the pen's two fillp
+nibbles resolve through the palette up front (walkers draw one color per
+call), so a shape pixel is down to camera-subtract + clip-compare +
+fillp-bit on direct-page struct fields plus one screen-byte RMW.
+`rectfill` additionally takes a byte-wise span path when no fill pattern
+is active (2 px/byte, odd-edge nibble RMW, `memset` middle). Semantically
+identical by construction — plotting can only write screen bytes, never
+draw state. Measured: **bench_draw 18 → 49 flips (2.7x, ~0.7 fps)**,
+demo_video 25 → 43 (1.7x). Gates: all six gfxvec goldens bit-identical
+on host, SNES parity hash carts bit-identical. Sprite ROW-blit (byte-wise
+sheet walk) left unclaimed — per-pixel `ctx_sprite` was enough for now.
 
 **T4 — the flip path. LANDED — M9's headline win.** `expand_screen` via a
 256-entry const `uint16_t` LUT in ROM (one indexed 16-bit store per

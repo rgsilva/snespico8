@@ -31,6 +31,27 @@ void p8i_sprite_plot(int x, int y, uint8_t c);
 uint8_t p8i_sheet_get(int x, int y);
 void p8i_sheet_set(int x, int y, uint8_t c);
 
+/* M9 T3: per-shape draw-context snapshot. Shape/sprite walkers load the
+** draw state ONCE per API call and plot through it -- semantically
+** identical to per-pixel re-reads (plotting only writes screen bytes,
+** never draw state) while removing ~10 far-RAM reads and three far
+** calls per pixel. p8i_ctx_pen resolves the pen's two fillp nibbles
+** through the draw palette up front (every walker draws one col per
+** call); p8i_ctx_sprite reads the snapshot palette per sheet pixel. */
+typedef struct {
+  int cam_x, cam_y;
+  int clip_x0, clip_y0, clip_x1, clip_y1;
+  unsigned int pat;    /* fillp bits (0 = solid) */
+  uint8_t pat_transp;  /* 0x5f33 bit 0: secondary nibble transparent */
+  uint8_t v_lo, v_hi;  /* p8i_ctx_pen: palette-resolved pen nibbles */
+  uint8_t drawpal[16]; /* snapshot for ctx_sprite / ctx_pen / ctx_glyph */
+} P8Ctx;
+void p8i_ctx_load(P8Ctx *k);
+void p8i_ctx_pen(P8Ctx *k, int col);
+void p8i_ctx_plot(const P8Ctx *k, int x, int y);
+void p8i_ctx_sprite(const P8Ctx *k, int x, int y, uint8_t c);
+void p8i_ctx_glyph(const P8Ctx *k, int x, int y, uint8_t c);
+
 /* button state for btnp (held-frame counters, advanced once per frame) */
 extern uint16_t p8i_buttons[2];
 extern uint8_t p8i_held[2][8];

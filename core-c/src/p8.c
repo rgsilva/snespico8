@@ -97,49 +97,110 @@ uint8_t p8i_screen_get(int x, int y)
   return (x & 1) ? (uint8_t)(b >> 4) : (uint8_t)(b & 0x0F);
 }
 
-/* shape pixel: camera + clip + fill pattern + draw palette. The fill
-** pattern selects the low (bit 0) or high (bit 1) nibble of the pen
-** value; with the 0x5f33 transparency flag, pattern-1 pixels are
-** skipped. VERIFY: draw palette assumed to apply to both nibbles. */
-void p8i_shape_plot(int x, int y, int col)
+/* M9 T3: draw-context snapshot (p8int.h P8Ctx). Semantics are pinned
+** to the pre-T3 per-pixel functions: same clip compares (clip bytes
+** promoted to int), same fillp nibble select ("VERIFY: draw palette
+** assumed to apply to both nibbles" -- unchanged, both nibbles resolve
+** through the palette), same sprite transparency-before-clip order. */
+void p8i_ctx_load(P8Ctx *k)
 {
-  uint8_t c;
-  x -= p8i_cam_x();
-  y -= p8i_cam_y();
-  if (x < p8_ram[P8_DS_CLIP_X0] || x >= p8_ram[P8_DS_CLIP_X1] ||
-      y < p8_ram[P8_DS_CLIP_Y0] || y >= p8_ram[P8_DS_CLIP_Y1])
-    return;
-  {
-    unsigned int pat = (unsigned int)p8_ram[0x5f31] |
-                       ((unsigned int)p8_ram[0x5f32] << 8);
-    if (pat) {
-      int bit = (pat >> (15 - ((y & 3) * 4 + (x & 3)))) & 1;
-      if (bit) {
-        if (p8_ram[0x5f33] & 1)
-          return; /* transparent secondary */
-        c = (uint8_t)((col >> 4) & 0x0F);
-      } else {
-        c = (uint8_t)(col & 0x0F);
-      }
-    } else {
-      c = (uint8_t)(col & 0x0F);
-    }
-  }
-  p8i_screen_set(x, y, (uint8_t)(p8_ram[P8_DS_DRAWPAL + c] & 0x0F));
+  int i;
+  k->cam_x = p8i_cam_x();
+  k->cam_y = p8i_cam_y();
+  k->clip_x0 = p8_ram[P8_DS_CLIP_X0];
+  k->clip_y0 = p8_ram[P8_DS_CLIP_Y0];
+  k->clip_x1 = p8_ram[P8_DS_CLIP_X1];
+  k->clip_y1 = p8_ram[P8_DS_CLIP_Y1];
+  k->pat = (unsigned int)p8_ram[0x5f31] | ((unsigned int)p8_ram[0x5f32] << 8);
+  k->pat_transp = (uint8_t)(p8_ram[0x5f33] & 1);
+  for (i = 0; i < 16; i++)
+    k->drawpal[i] = p8_ram[P8_DS_DRAWPAL + i];
+  k->v_lo = 0;
+  k->v_hi = 0;
 }
 
-/* sprite pixel: camera + clip + draw palette with transparency bit */
-void p8i_sprite_plot(int x, int y, uint8_t c)
+void p8i_ctx_pen(P8Ctx *k, int col)
 {
-  uint8_t m = p8_ram[P8_DS_DRAWPAL + (c & 0x0F)];
+  k->v_lo = (uint8_t)(k->drawpal[col & 0x0F] & 0x0F);
+  k->v_hi = (uint8_t)(k->drawpal[(col >> 4) & 0x0F] & 0x0F);
+}
+
+void p8i_ctx_plot(const P8Ctx *k, int x, int y)
+{
+  uint8_t v;
+  uint8_t *b;
+  x -= k->cam_x;
+  y -= k->cam_y;
+  if (x < k->clip_x0 || x >= k->clip_x1 || y < k->clip_y0 || y >= k->clip_y1)
+    return;
+  if (k->pat) {
+    if ((k->pat >> (15 - ((y & 3) * 4 + (x & 3)))) & 1) {
+      if (k->pat_transp)
+        return; /* transparent secondary */
+      v = k->v_hi;
+    } else {
+      v = k->v_lo;
+    }
+  } else {
+    v = k->v_lo;
+  }
+  b = &p8_ram[P8_SCREEN + (uint16_t)(y * 64 + (x >> 1))];
+  if (x & 1)
+    *b = (uint8_t)((*b & 0x0F) | (v << 4));
+  else
+    *b = (uint8_t)((*b & 0xF0) | v);
+}
+
+void p8i_ctx_sprite(const P8Ctx *k, int x, int y, uint8_t c)
+{
+  uint8_t m = k->drawpal[c & 0x0F];
+  uint8_t *b;
   if (m & 0x10)
     return; /* transparent color */
-  x -= p8i_cam_x();
-  y -= p8i_cam_y();
-  if (x < p8_ram[P8_DS_CLIP_X0] || x >= p8_ram[P8_DS_CLIP_X1] ||
-      y < p8_ram[P8_DS_CLIP_Y0] || y >= p8_ram[P8_DS_CLIP_Y1])
+  x -= k->cam_x;
+  y -= k->cam_y;
+  if (x < k->clip_x0 || x >= k->clip_x1 || y < k->clip_y0 || y >= k->clip_y1)
     return;
-  p8i_screen_set(x, y, (uint8_t)(m & 0x0F));
+  m &= 0x0F;
+  b = &p8_ram[P8_SCREEN + (uint16_t)(y * 64 + (x >> 1))];
+  if (x & 1)
+    *b = (uint8_t)((*b & 0x0F) | (m << 4));
+  else
+    *b = (uint8_t)((*b & 0xF0) | m);
+}
+
+/* glyph pixel: camera + clip + draw palette, no fillp, no transparency
+** (pinned to the pre-T3 glyph_plot; VERIFY print vs fillp/palt
+** interaction -- unchanged) */
+void p8i_ctx_glyph(const P8Ctx *k, int x, int y, uint8_t c)
+{
+  uint8_t v = (uint8_t)(k->drawpal[c & 0x0F] & 0x0F);
+  uint8_t *b;
+  x -= k->cam_x;
+  y -= k->cam_y;
+  if (x < k->clip_x0 || x >= k->clip_x1 || y < k->clip_y0 || y >= k->clip_y1)
+    return;
+  b = &p8_ram[P8_SCREEN + (uint16_t)(y * 64 + (x >> 1))];
+  if (x & 1)
+    *b = (uint8_t)((*b & 0x0F) | (v << 4));
+  else
+    *b = (uint8_t)((*b & 0xF0) | v);
+}
+
+/* single-pixel compat wrappers (api_pset and any stragglers) */
+void p8i_shape_plot(int x, int y, int col)
+{
+  P8Ctx k;
+  p8i_ctx_load(&k);
+  p8i_ctx_pen(&k, col);
+  p8i_ctx_plot(&k, x, y);
+}
+
+void p8i_sprite_plot(int x, int y, uint8_t c)
+{
+  P8Ctx k;
+  p8i_ctx_load(&k);
+  p8i_ctx_sprite(&k, x, y, c);
 }
 
 uint8_t p8i_sheet_get(int x, int y)

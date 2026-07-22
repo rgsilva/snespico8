@@ -37,7 +37,9 @@ static int pen_or_arg(lua_State *L, int idx)
 
 /* ---- lines ---- */
 
-static void draw_line(int x0, int y0, int x1, int y1, int col)
+/* M9 T3: all walkers snapshot the draw state once (P8Ctx) and plot
+** through it -- see p8int.h. Pen is resolved in the ctx by the caller. */
+static void draw_line(const P8Ctx *k, int x0, int y0, int x1, int y1)
 {
   int dx = x1 > x0 ? x1 - x0 : x0 - x1;
   int dy = y1 > y0 ? y1 - y0 : y0 - y1;
@@ -45,7 +47,7 @@ static void draw_line(int x0, int y0, int x1, int y1, int col)
   int sy = y0 < y1 ? 1 : -1;
   int err = dx - dy;
   for (;;) {
-    p8i_shape_plot(x0, y0, col);
+    p8i_ctx_plot(k, x0, y0);
     if (x0 == x1 && y0 == y1)
       break;
     {
@@ -72,8 +74,10 @@ static int api_line(lua_State *L)
   if (argc >= 4) {
     int x0 = p8a_int(L, 1), y0 = p8a_int(L, 2);
     int x1 = p8a_int(L, 3), y1 = p8a_int(L, 4);
-    int col = pen_or_arg(L, 5);
-    draw_line(x0, y0, x1, y1, col);
+    P8Ctx k;
+    p8i_ctx_load(&k);
+    p8i_ctx_pen(&k, pen_or_arg(L, 5));
+    draw_line(&k, x0, y0, x1, y1);
     wr16(DS_LINE_X, x1);
     wr16(DS_LINE_Y, y1);
     p8_ram[DS_LINE_INVALID] &= (uint8_t)~1u;
@@ -82,11 +86,13 @@ static int api_line(lua_State *L)
   {
     /* line(x1, y1, [col]): continue from the stored endpoint */
     int x1 = p8a_int(L, 1), y1 = p8a_int(L, 2);
-    int col = pen_or_arg(L, 3);
+    P8Ctx k;
+    p8i_ctx_load(&k);
+    p8i_ctx_pen(&k, pen_or_arg(L, 3));
     if (!(p8_ram[DS_LINE_INVALID] & 1))
-      draw_line(rd16(DS_LINE_X), rd16(DS_LINE_Y), x1, y1, col);
+      draw_line(&k, rd16(DS_LINE_X), rd16(DS_LINE_Y), x1, y1);
     else
-      p8i_shape_plot(x1, y1, col); /* VERIFY: first point after line() */
+      p8i_ctx_plot(&k, x1, y1); /* VERIFY: first point after line() */
     wr16(DS_LINE_X, x1);
     wr16(DS_LINE_Y, y1);
     p8_ram[DS_LINE_INVALID] &= (uint8_t)~1u;
@@ -109,17 +115,19 @@ static int api_rect(lua_State *L)
 {
   int x0 = p8a_int(L, 1), y0 = p8a_int(L, 2);
   int x1 = p8a_int(L, 3), y1 = p8a_int(L, 4);
-  int col = pen_or_arg(L, 5);
   int x;
+  P8Ctx k;
   norm2(&x0, &x1);
   norm2(&y0, &y1);
+  p8i_ctx_load(&k);
+  p8i_ctx_pen(&k, pen_or_arg(L, 5));
   for (x = x0; x <= x1; x++) {
-    p8i_shape_plot(x, y0, col);
-    p8i_shape_plot(x, y1, col);
+    p8i_ctx_plot(&k, x, y0);
+    p8i_ctx_plot(&k, x, y1);
   }
   for (x = y0 + 1; x < y1; x++) {
-    p8i_shape_plot(x0, x, col);
-    p8i_shape_plot(x1, x, col);
+    p8i_ctx_plot(&k, x0, x);
+    p8i_ctx_plot(&k, x1, x);
   }
   return 0;
 }
@@ -128,19 +136,64 @@ static int api_rectfill(lua_State *L)
 {
   int x0 = p8a_int(L, 1), y0 = p8a_int(L, 2);
   int x1 = p8a_int(L, 3), y1 = p8a_int(L, 4);
-  int col = pen_or_arg(L, 5);
   int x, y;
+  P8Ctx k;
   norm2(&x0, &x1);
   norm2(&y0, &y1);
+  p8i_ctx_load(&k);
+  p8i_ctx_pen(&k, pen_or_arg(L, 5));
+  if (k.pat == 0) {
+    /* M9 T3 span path: solid fill, so clip the rect once and fill each
+       row byte-wise (2 px/byte; odd edges RMW their nibble -- x&1 is
+       the HIGH nibble, matching p8i_screen_set). Bit-identical to the
+       per-pixel loop: same camera/clip arithmetic, same nibble writes,
+       just batched. */
+    int beg = x0 - k.cam_x, end = x1 - k.cam_x;
+    int ry0 = y0 - k.cam_y, ry1 = y1 - k.cam_y;
+    uint8_t v = k.v_lo, vv = (uint8_t)(v | (v << 4));
+    if (beg < k.clip_x0) beg = k.clip_x0;
+    if (end >= k.clip_x1) end = k.clip_x1 - 1;
+    if (ry0 < k.clip_y0) ry0 = k.clip_y0;
+    if (ry1 >= k.clip_y1) ry1 = k.clip_y1 - 1;
+    if (beg <= end && ry0 <= ry1) {
+      int bx = beg >> 1, ex = end >> 1;
+      uint8_t *row = &p8_ram[P8_SCREEN + (uint16_t)(ry0 * 64)];
+      for (y = ry0; y <= ry1; y++, row += 64) {
+        if (bx == ex) {
+          uint8_t *p = row + bx;
+          if ((beg & 1) == 0 && (end & 1) != 0)
+            *p = vv;
+          else if (beg & 1)
+            *p = (uint8_t)((*p & 0x0F) | (v << 4));
+          else
+            *p = (uint8_t)((*p & 0xF0) | v);
+        } else {
+          uint8_t *p = row + bx;
+          uint8_t *q = row + ex;
+          if (beg & 1) {
+            *p = (uint8_t)((*p & 0x0F) | (v << 4));
+            p++;
+          }
+          if ((end & 1) == 0) {
+            *q = (uint8_t)((*q & 0xF0) | v);
+            q--;
+          }
+          if (q >= p)
+            memset(p, vv, (size_t)(q - p + 1));
+        }
+      }
+    }
+    return 0;
+  }
   for (y = y0; y <= y1; y++)
     for (x = x0; x <= x1; x++)
-      p8i_shape_plot(x, y, col);
+      p8i_ctx_plot(&k, x, y);
   return 0;
 }
 
 /* ---- circles (midpoint; VERIFY exact PICO-8 shape for small radii) ---- */
 
-static void circ_spans(int cx, int cy, int r, int col, int fill)
+static void circ_spans(const P8Ctx *k, int cx, int cy, int r, int fill)
 {
   int x = r, y = 0, err = 1 - r;
   if (r < 0)
@@ -149,22 +202,22 @@ static void circ_spans(int cx, int cy, int r, int col, int fill)
     if (fill) {
       int i;
       for (i = -x; i <= x; i++) {
-        p8i_shape_plot(cx + i, cy + y, col);
-        p8i_shape_plot(cx + i, cy - y, col);
+        p8i_ctx_plot(k, cx + i, cy + y);
+        p8i_ctx_plot(k, cx + i, cy - y);
       }
       for (i = -y; i <= y; i++) {
-        p8i_shape_plot(cx + i, cy + x, col);
-        p8i_shape_plot(cx + i, cy - x, col);
+        p8i_ctx_plot(k, cx + i, cy + x);
+        p8i_ctx_plot(k, cx + i, cy - x);
       }
     } else {
-      p8i_shape_plot(cx + x, cy + y, col);
-      p8i_shape_plot(cx - x, cy + y, col);
-      p8i_shape_plot(cx + x, cy - y, col);
-      p8i_shape_plot(cx - x, cy - y, col);
-      p8i_shape_plot(cx + y, cy + x, col);
-      p8i_shape_plot(cx - y, cy + x, col);
-      p8i_shape_plot(cx + y, cy - x, col);
-      p8i_shape_plot(cx - y, cy - x, col);
+      p8i_ctx_plot(k, cx + x, cy + y);
+      p8i_ctx_plot(k, cx - x, cy + y);
+      p8i_ctx_plot(k, cx + x, cy - y);
+      p8i_ctx_plot(k, cx - x, cy - y);
+      p8i_ctx_plot(k, cx + y, cy + x);
+      p8i_ctx_plot(k, cx - y, cy + x);
+      p8i_ctx_plot(k, cx + y, cy - x);
+      p8i_ctx_plot(k, cx - y, cy - x);
     }
     y++;
     if (err < 0) {
@@ -180,7 +233,10 @@ static int api_circ(lua_State *L)
 {
   int cx = p8a_int(L, 1), cy = p8a_int(L, 2);
   int r = p8a_optint(L, 3, 4);
-  circ_spans(cx, cy, r, pen_or_arg(L, 4), 0);
+  P8Ctx k;
+  p8i_ctx_load(&k);
+  p8i_ctx_pen(&k, pen_or_arg(L, 4));
+  circ_spans(&k, cx, cy, r, 0);
   return 0;
 }
 
@@ -188,13 +244,16 @@ static int api_circfill(lua_State *L)
 {
   int cx = p8a_int(L, 1), cy = p8a_int(L, 2);
   int r = p8a_optint(L, 3, 4);
-  circ_spans(cx, cy, r, pen_or_arg(L, 4), 1);
+  P8Ctx k;
+  p8i_ctx_load(&k);
+  p8i_ctx_pen(&k, pen_or_arg(L, 4));
+  circ_spans(&k, cx, cy, r, 1);
   return 0;
 }
 
 /* ---- ovals (axis-aligned, bounding box; VERIFY exact shape) ---- */
 
-static void oval_draw(int x0, int y0, int x1, int y1, int col, int fill)
+static void oval_draw(const P8Ctx *k, int x0, int y0, int x1, int y1, int fill)
 {
   /* integer midpoint ellipse on the bounding box */
   int a, b, cx2, cy2, x, y;
@@ -216,14 +275,14 @@ static void oval_draw(int x0, int y0, int x1, int y1, int col, int fill)
     if (fill) {
       int i;
       for (i = px0; i <= px1; i++) {
-        p8i_shape_plot(i, py0, col);
-        p8i_shape_plot(i, py1, col);
+        p8i_ctx_plot(k, i, py0);
+        p8i_ctx_plot(k, i, py1);
       }
     } else {
-      p8i_shape_plot(px0, py1, col);
-      p8i_shape_plot(px1, py1, col);
-      p8i_shape_plot(px0, py0, col);
-      p8i_shape_plot(px1, py0, col);
+      p8i_ctx_plot(k, px0, py1);
+      p8i_ctx_plot(k, px1, py1);
+      p8i_ctx_plot(k, px0, py0);
+      p8i_ctx_plot(k, px1, py0);
     }
     e2 = 2 * err;
     if (e2 >= (x * 2 + 1) * b2) {
@@ -242,7 +301,10 @@ static int api_oval(lua_State *L)
 {
   int x0 = p8a_int(L, 1), y0 = p8a_int(L, 2);
   int x1 = p8a_int(L, 3), y1 = p8a_int(L, 4);
-  oval_draw(x0, y0, x1, y1, pen_or_arg(L, 5), 0);
+  P8Ctx k;
+  p8i_ctx_load(&k);
+  p8i_ctx_pen(&k, pen_or_arg(L, 5));
+  oval_draw(&k, x0, y0, x1, y1, 0);
   return 0;
 }
 
@@ -250,7 +312,10 @@ static int api_ovalfill(lua_State *L)
 {
   int x0 = p8a_int(L, 1), y0 = p8a_int(L, 2);
   int x1 = p8a_int(L, 3), y1 = p8a_int(L, 4);
-  oval_draw(x0, y0, x1, y1, pen_or_arg(L, 5), 1);
+  P8Ctx k;
+  p8i_ctx_load(&k);
+  p8i_ctx_pen(&k, pen_or_arg(L, 5));
+  oval_draw(&k, x0, y0, x1, y1, 1);
   return 0;
 }
 
@@ -269,11 +334,13 @@ static int api_spr(lua_State *L)
   int fy = lua_toboolean(L, 7);
   int sx0 = (n % 16) * 8, sy0 = (n / 16) * 8;
   int i, j;
+  P8Ctx k;
+  p8i_ctx_load(&k);
   for (j = 0; j < ph; j++)
     for (i = 0; i < pw; i++) {
       int si = fx ? pw - 1 - i : i;
       int sj = fy ? ph - 1 - j : j;
-      p8i_sprite_plot(x + i, y + j, p8i_sheet_get(sx0 + si, sy0 + sj));
+      p8i_ctx_sprite(&k, x + i, y + j, p8i_sheet_get(sx0 + si, sy0 + sj));
     }
   return 0;
 }
@@ -291,12 +358,16 @@ static int api_sspr(lua_State *L)
   if (dh < 0) { dh = -dh; fy = !fy; }
   if (dw == 0 || dh == 0 || sw <= 0 || sh <= 0)
     return 0;
-  for (j = 0; j < dh; j++)
-    for (i = 0; i < dw; i++) {
-      int si = (int)(((long)(fx ? dw - 1 - i : i) * sw) / dw);
-      int sj = (int)(((long)(fy ? dh - 1 - j : j) * sh) / dh);
-      p8i_sprite_plot(dx + i, dy + j, p8i_sheet_get(sx + si, sy + sj));
-    }
+  {
+    P8Ctx k;
+    p8i_ctx_load(&k);
+    for (j = 0; j < dh; j++)
+      for (i = 0; i < dw; i++) {
+        int si = (int)(((long)(fx ? dw - 1 - i : i) * sw) / dw);
+        int sj = (int)(((long)(fy ? dh - 1 - j : j) * sh) / dh);
+        p8i_ctx_sprite(&k, dx + i, dy + j, p8i_sheet_get(sx + si, sy + sj));
+      }
+  }
   return 0;
 }
 
@@ -334,6 +405,8 @@ static int api_map(lua_State *L)
   int cw = p8a_optint(L, 5, 128), ch = p8a_optint(L, 6, 32);
   int layer = p8a_optint(L, 7, 0) & 0xFF;
   int i, j;
+  P8Ctx k;
+  p8i_ctx_load(&k);
   for (j = 0; j < ch; j++)
     for (i = 0; i < cw; i++) {
       unsigned int a = map_addr(cx + i, cy + j);
@@ -347,7 +420,7 @@ static int api_map(lua_State *L)
         int u, v, s0 = (n % 16) * 8, t0 = (n / 16) * 8;
         for (v = 0; v < 8; v++)
           for (u = 0; u < 8; u++)
-            p8i_sprite_plot(px + u, py + v, p8i_sheet_get(s0 + u, t0 + v));
+            p8i_ctx_sprite(&k, px + u, py + v, p8i_sheet_get(s0 + u, t0 + v));
       }
     }
   return 0;
@@ -509,18 +582,6 @@ static int api_cursor(lua_State *L)
   return 0;
 }
 
-/* glyph pixel: camera + clip + draw palette, no fillp, no transparency
-** (VERIFY: print vs fillp/palt interaction) */
-static void glyph_plot(int x, int y, uint8_t c)
-{
-  x -= p8i_cam_x();
-  y -= p8i_cam_y();
-  if (x < p8_ram[P8_DS_CLIP_X0] || x >= p8_ram[P8_DS_CLIP_X1] ||
-      y < p8_ram[P8_DS_CLIP_Y0] || y >= p8_ram[P8_DS_CLIP_Y1])
-    return;
-  p8i_screen_set(x, y, (uint8_t)(p8_ram[P8_DS_DRAWPAL + (c & 0x0F)] & 0x0F));
-}
-
 static void screen_scroll(int lines)
 {
   int bytes = lines * 64;
@@ -566,13 +627,15 @@ static int api_print(lua_State *L)
     {
       int px, py;
       uint8_t pen = p8_ram[P8_DS_PEN];
+      P8Ctx k;
+      p8i_ctx_load(&k);   /* per glyph: screen_scroll moves rows, not state */
       for (py = 0; py < 8; py++) {
         uint8_t row = p8_font[c][py];
         if (!row)
           continue;
         for (px = 0; px < 8; px++)
           if ((row >> px) & 1)
-            glyph_plot(x + px, y + py, pen);
+            p8i_ctx_glyph(&k, x + px, y + py, pen);
       }
       x += (c < 128) ? 4 : 8;
     }
