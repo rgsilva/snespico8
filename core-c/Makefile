@@ -11,7 +11,7 @@ CC ?= cc
 CFLAGS = -O2 -std=c99 -fwrapv -Wall -Wextra -Wno-unused-parameter -Isrc -DP8_OPSTATS
 
 LUA = lapi lauxlib lbaselib lcode lctype lcorolib ldebug ldo ldump lfunc lpico8lib \
-      lgc llex lmem lobject lopcodes lparser lstate lstring ltable ltm \
+      lgc llex lmem lobject lopcodes lparser lstate lstring ltable ltable_get ltm \
       lundump lvm lzio
 
 BUILD = build

@@ -127,4 +127,17 @@ camera()
 -- btnp defaults (no input held: just exercise the call)
 printh("btn "..tostr(btn(0)).." "..tostr(btnp(4)))
 
+-- str[pos] sugar (0.2.5): sub(str,pos,pos) semantics exactly -- floor,
+-- negative counts from the end, out of range is "" (never nil).
+-- M9 T7 pins this: the first port indexed with raw fix32 bits, so
+-- every normal index returned nil and no vector noticed.
+local sv = "snes"
+printh("stridx "..sv[1]..sv[4]..tostr(sv[-1])..tostr(sv[-4]))
+printh("stridx2 "..tostr(sv[0]).."|"..tostr(sv[5]).."|"..tostr(sv[-5]))
+printh("stridx3 "..tostr(sv[1.5])..tostr(sv[-0.5]))
+for k=-6,6 do
+  if sv[k] ~= sub(sv,k,k) then printh("stridx4 DIVERGES at "..k) end
+end
+printh("stridx4 s[k]==sub(s,k,k) all k")
+
 printh("realvec-end")

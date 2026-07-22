@@ -465,6 +465,17 @@ extern long p8_str2fix(const char *s, char **endptr);
    host, native on the 65816. */
 #define luai_numadd(L,a,b)	((LUA_NUMBER)(LUA_INT32)((unsigned LUA_INT32)(a) + (unsigned LUA_INT32)(b)))
 #define luai_numsub(L,a,b)	((LUA_NUMBER)(LUA_INT32)((unsigned LUA_INT32)(a) - (unsigned LUA_INT32)(b)))
+/* M9 T7: "is this fix32 an integer, and which one" without the
+   p8fix_toint + p8fix_fromint far-call pair the old
+   number2int/cast_num round-trip cost per number-keyed table access.
+   Exact: frac bits zero <=> fromint(toint(n)) == n for all 2^32
+   inputs (toint is an arithmetic >>16 = floor; fromint wraps, and
+   every >>16 result is in wrap-free range). */
+#define luai_numisint(n)	((((unsigned LUA_INT32)(n)) & 0xFFFFu) == 0)
+/* logical shift + 16-bit sign reinterpretation, the p8fix_toint idiom
+   (a signed >> would be implementation-defined) */
+#define luai_numasint(n)	((int)(short)((unsigned LUA_INT32)(n) >> 16))
+#define luai_int2num(i)		((LUA_NUMBER)(LUA_INT32)((unsigned LUA_INT32)(i) << 16))
 #define luai_nummul(L,a,b)	((LUA_NUMBER)p8fix_mul((long)(a), (long)(b)))
 #define luai_numdiv(L,a,b)	((LUA_NUMBER)p8fix_div((long)(a), (long)(b)))
 #define luai_numunm(L,a)	((LUA_NUMBER)(LUA_INT32)(0u - (unsigned LUA_INT32)(a)))

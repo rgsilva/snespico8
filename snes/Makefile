@@ -40,7 +40,7 @@ P8CFLAGS = --core=65816 --target=snes --code-model=large --data-model=large \
            $(P8EXTRA)
 LUAOBJS := lapi lauxlib lbaselib lcode lctype lcorolib ldebug ldo ldump \
            lfunc lgc llex lmem lobject lopcodes lparser lstate lstring \
-           ltable ltm lundump lvm lzio lpico8lib
+           ltable ltable_get ltm lundump lvm lzio lpico8lib
 COREOBJS := p8num p8 p8gfx p8audio
 P8LUA_O := $(addprefix $(BUILD)/p8obj/lua_,$(addsuffix .o,$(LUAOBJS)))
 P8CORE_O := $(addprefix $(BUILD)/p8obj/,$(addsuffix .o,$(COREOBJS)))
@@ -119,7 +119,10 @@ P8OPT_HOT ?= -O2 --speed
 # lua_ltable is NOT in the -O2 set: at -O2 it miscompiles an allocation
 # size during lua_newstate ("memory allocation error: block too big"
 # panic at boot -- bisected 2026-07-21, all other hot TUs pass).
-P8HOT ?= lua_lvm lua_lgc lua_lstring lua_ldo p8num p8 p8gfx
+# lua_ltable_get IS: the M9 T7 split moved the never-allocating lookup
+# half (luaH_get -- 22% of Celeste gameplay ops sit on it) out of the
+# pinned TU precisely so it could take -O2 --speed.
+P8HOT ?= lua_lvm lua_lgc lua_lstring lua_ldo lua_ltable_get p8num p8 p8gfx
 P8HOT1 ?=
 $(addprefix $(BUILD)/p8obj/,$(addsuffix .o,$(P8HOT))): P8OPT = $(P8OPT_HOT)
 $(addprefix $(BUILD)/p8obj/,$(addsuffix .o,$(P8HOT1))): P8OPT = -O1

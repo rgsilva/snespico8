@@ -48,76 +48,16 @@
 #define MAXASIZE	(1 << MAXBITS)
 
 
-#define hashpow2(t,n)		(gnode(t, lmod((n), sizenode(t))))
+/* M9 T7: hash helpers + the dummy node moved to ltable_i.h, shared
+** with ltable_get.c (the lookup half, which builds -O2 while this TU
+** stays pinned -O0 by miscompile #4). The dummy node is defined HERE,
+** once: isdummy() compares pointers, so both TUs must see one object. */
+#include "ltable_i.h"
 
-#define hashstr(t,str)		hashpow2(t, (str)->tsv.hash)
-#define hashboolean(t,p)	hashpow2(t, p)
-
-
-/*
-** for some types, it is better to avoid modulus by power of 2, as
-** they tend to have many 2 factors.
-*/
-#define hashmod(t,n)	(gnode(t, ((n) % ((sizenode(t)-1)|1))))
-
-
-#define hashpointer(t,p)	hashmod(t, IntPoint(p))
-
-
-#define dummynode		(&dummynode_)
-
-#define isdummy(n)		((n) == dummynode)
-
-static const Node dummynode_ = {
+LUAI_DDEF const Node luaH_dummynode_ = {
   {NILCONSTANT},  /* value */
   {{NILCONSTANT, NULL}}  /* key */
 };
-
-
-/*
-** hash for lua_Numbers
-*/
-static Node *hashnum (const Table *t, lua_Number n) {
-  int i;
-  luai_hashnum(i, n);
-  if (i < 0) {
-    if (cast(unsigned int, i) == 0u - i)  /* use unsigned to avoid overflows */
-      i = 0;  /* handle INT_MIN */
-    i = -i;  /* must be a positive value */
-  }
-  return hashmod(t, i);
-}
-
-
-
-/*
-** returns the `main' position of an element in a table (that is, the index
-** of its hash value)
-*/
-static Node *mainposition (const Table *t, const TValue *key) {
-  switch (ttype(key)) {
-    case LUA_TNUMBER:
-      return hashnum(t, nvalue(key));
-    case LUA_TLNGSTR: {
-      TString *s = rawtsvalue(key);
-      if (s->tsv.extra == 0) {  /* no hash? */
-        s->tsv.hash = luaS_hash(getstr(s), s->tsv.len, s->tsv.hash);
-        s->tsv.extra = 1;  /* now it has its hash */
-      }
-      return hashstr(t, rawtsvalue(key));
-    }
-    case LUA_TSHRSTR:
-      return hashstr(t, rawtsvalue(key));
-    case LUA_TBOOLEAN:
-      return hashboolean(t, bvalue(key));
-    case LUA_TLIGHTUSERDATA:
-      return hashpointer(t, pvalue(key));
-    case LUA_TLCF:
-      return hashpointer(t, fvalue(key));
-    default:
-      return hashpointer(t, gcvalue(key));
-  }
-}
 
 
 /*
@@ -127,10 +67,8 @@ static Node *mainposition (const Table *t, const TValue *key) {
 static int arrayindex (const TValue *key) {
   if (ttisnumber(key)) {
     lua_Number n = nvalue(key);
-    int k;
-    lua_number2int(k, n);
-    if (luai_numeq(cast_num(k), n))
-      return k;
+    if (luai_numisint(n))
+      return luai_numasint(n);
   }
   return -1;  /* `key' did not match some condition */
 }
@@ -170,7 +108,7 @@ int luaH_next (lua_State *L, Table *t, StkId key) {
   int i = findindex(L, t, key);  /* find original element */
   for (i++; i < t->sizearray; i++) {  /* try first array part */
     if (!ttisnil(&t->array[i])) {  /* a non-nil value? */
-      setnvalue(key, cast_num(i+1));
+      setnvalue(key, luai_int2num(i+1));
       setobj2s(L, key+1, &t->array[i]);
       return 1;
     }
@@ -440,67 +378,10 @@ TValue *luaH_newkey (lua_State *L, Table *t, const TValue *key) {
 }
 
 
-/*
-** search function for integers
-*/
-const TValue *luaH_getint (Table *t, int key) {
-  /* (1 <= key && key <= t->sizearray) */
-  if (cast(unsigned int, key-1) < cast(unsigned int, t->sizearray))
-    return &t->array[key-1];
-  else {
-    lua_Number nk = cast_num(key);
-    Node *n = hashnum(t, nk);
-    do {  /* check whether `key' is somewhere in the chain */
-      if (ttisnumber(gkey(n)) && luai_numeq((lua_Number)nvalue(gkey(n)), nk))
-        return gval(n);  /* that's it */
-      else n = gnext(n);
-    } while (n);
-    return luaO_nilobject;
-  }
-}
 
 
-/*
-** search function for short strings
-*/
-const TValue *luaH_getstr (Table *t, TString *key) {
-  Node *n = hashstr(t, key);
-  lua_assert(key->tsv.tt == LUA_TSHRSTR);
-  do {  /* check whether `key' is somewhere in the chain */
-    if (ttisshrstring(gkey(n)) && eqshrstr(rawtsvalue(gkey(n)), key))
-      return gval(n);  /* that's it */
-    else n = gnext(n);
-  } while (n);
-  return luaO_nilobject;
-}
 
 
-/*
-** main search function
-*/
-const TValue *luaH_get (Table *t, const TValue *key) {
-  switch (ttype(key)) {
-    case LUA_TSHRSTR: return luaH_getstr(t, rawtsvalue(key));
-    case LUA_TNIL: return luaO_nilobject;
-    case LUA_TNUMBER: {
-      int k;
-      lua_Number n = nvalue(key);
-      lua_number2int(k, n);
-      if (luai_numeq(cast_num(k), n)) /* index is int? */
-        return luaH_getint(t, k);  /* use specialized version */
-      /* else go through */
-    }
-    default: {
-      Node *n = mainposition(t, key);
-      do {  /* check whether `key' is somewhere in the chain */
-        if (luaV_rawequalobj(gkey(n), key))
-          return gval(n);  /* that's it */
-        else n = gnext(n);
-      } while (n);
-      return luaO_nilobject;
-    }
-  }
-}
 
 
 /*
@@ -522,58 +403,15 @@ void luaH_setint (lua_State *L, Table *t, int key, TValue *value) {
     cell = cast(TValue *, p);
   else {
     TValue k;
-    setnvalue(&k, cast_num(key));
+    setnvalue(&k, luai_int2num(key));
     cell = luaH_newkey(L, t, &k);
   }
   setobj2t(L, cell, value);
 }
 
 
-static int unbound_search (Table *t, unsigned int j) {
-  unsigned int i = j;  /* i is zero or a present index */
-  j++;
-  /* find `i' and `j' such that i is present and j is not */
-  while (!ttisnil(luaH_getint(t, j))) {
-    i = j;
-    j *= 2;
-    if (j > cast(unsigned int, MAX_INT)) {  /* overflow? */
-      /* table was built with bad purposes: resort to linear search */
-      i = 1;
-      while (!ttisnil(luaH_getint(t, i))) i++;
-      return i - 1;
-    }
-  }
-  /* now do a binary search between them */
-  while (j - i > 1) {
-    unsigned int m = (i+j)/2;
-    if (ttisnil(luaH_getint(t, m))) j = m;
-    else i = m;
-  }
-  return i;
-}
 
 
-/*
-** Try to find a boundary in table `t'. A `boundary' is an integer index
-** such that t[i] is non-nil and t[i+1] is nil (and 0 if t[1] is nil).
-*/
-int luaH_getn (Table *t) {
-  unsigned int j = t->sizearray;
-  if (j > 0 && ttisnil(&t->array[j - 1])) {
-    /* there is a boundary in the array part: (binary) search for it */
-    unsigned int i = 0;
-    while (j - i > 1) {
-      unsigned int m = (i+j)/2;
-      if (ttisnil(&t->array[m - 1])) j = m;
-      else i = m;
-    }
-    return i;
-  }
-  /* else must find a boundary in hash part */
-  else if (isdummy(t->node))  /* hash part is empty? */
-    return j;  /* that is easy... */
-  else return unbound_search(t, j);
-}
 
 
 

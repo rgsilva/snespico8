@@ -111,11 +111,20 @@ static void callTM (lua_State *L, const TValue *f, const TValue *p1,
 
 void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
   // PICO-8 0.2.5 changelog: sub(str,pos,pos) can be written as str[pos]
-  if (ttisstring(t)) {
+  if (ttisstring(t) && ttisnumber(key)) {
+    /* M9 T7 fix: this used the RAW fix32 bits as the index (s[2] looked
+    ** up index 131072 -> always nil) and read garbage bits when the key
+    ** was not a number. Real-PICO-8-pinned semantics (realvec): floor
+    ** the index, count from the end for pos <= 0 -- but out of range
+    ** is NIL, not "": the console's str[pos] is NOT quite
+    ** sub(str,pos,pos) at the edges (sub gives "" there; the realvec
+    ** stridx4 loop records the console printing its own DIVERGES lines
+    ** for exactly the out-of-range ks). Non-number keys fall through
+    ** to the metatable path and error like the console. */
     const char *s = svalue(t);
     size_t ls = tsvalue(t)->len;
-    int k = cast_int(nvalue(key));
-    size_t idx = k > 0 ? k - 1 : ls + k;
+    int k = luai_numasint(nvalue(key));  /* floor, like sub() */
+    size_t idx = k > 0 ? (size_t)(k - 1) : ls + (size_t)k;
     if (idx >= ls)
       setnilvalue(val);
     else
@@ -733,10 +742,22 @@ DEF_UNARY(vmop_peek4, luai_numpeek4, TM_PEEK4)
     v->ci->u.l.savedpc += GETARG_sBx(i) + e; }
 #define donextjumpV()	{ i = *v->ci->u.l.savedpc; dojumpV(i, 1) }
 
+/* M9 T7: EQ/LT/LE carry an in-body number-number fast path -- ~20% of
+** gameplay ops paid a far call into luaV_* just to discover both
+** operands were numbers and compare 32 bits. Number comparisons cannot
+** invoke metamethods or move the stack, so the fast path needs no
+** ProtectV; the slow path is byte-identical to the pre-T7 body. */
 static void vmop_eq (VMCtx *v, Instruction i) {
   lua_State *L = v->L;
   TValue *rb = vRKB(i);
   TValue *rc = vRKC(i);
+  if (ttisnumber(rb) && ttisnumber(rc)) {
+    if ((nvalue(rb) == nvalue(rc)) != GETARG_A(i))
+      v->ci->u.l.savedpc++;
+    else
+      donextjumpV();
+    return;
+  }
   ProtectV(
     if (cast_int(equalobj(L, rb, rc)) != GETARG_A(i))
       v->ci->u.l.savedpc++;
@@ -746,8 +767,17 @@ static void vmop_eq (VMCtx *v, Instruction i) {
 }
 static void vmop_lt (VMCtx *v, Instruction i) {
   lua_State *L = v->L;
+  TValue *rb = vRKB(i);
+  TValue *rc = vRKC(i);
+  if (ttisnumber(rb) && ttisnumber(rc)) {
+    if ((nvalue(rb) < nvalue(rc)) != GETARG_A(i))
+      v->ci->u.l.savedpc++;
+    else
+      donextjumpV();
+    return;
+  }
   ProtectV(
-    if (luaV_lessthan(L, vRKB(i), vRKC(i)) != GETARG_A(i))
+    if (luaV_lessthan(L, rb, rc) != GETARG_A(i))
       v->ci->u.l.savedpc++;
     else
       donextjumpV();
@@ -755,8 +785,17 @@ static void vmop_lt (VMCtx *v, Instruction i) {
 }
 static void vmop_le (VMCtx *v, Instruction i) {
   lua_State *L = v->L;
+  TValue *rb = vRKB(i);
+  TValue *rc = vRKC(i);
+  if (ttisnumber(rb) && ttisnumber(rc)) {
+    if ((nvalue(rb) <= nvalue(rc)) != GETARG_A(i))
+      v->ci->u.l.savedpc++;
+    else
+      donextjumpV();
+    return;
+  }
   ProtectV(
-    if (luaV_lessequal(L, vRKB(i), vRKC(i)) != GETARG_A(i))
+    if (luaV_lessequal(L, rb, rc) != GETARG_A(i))
       v->ci->u.l.savedpc++;
     else
       donextjumpV();
