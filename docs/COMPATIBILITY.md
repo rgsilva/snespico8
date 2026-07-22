@@ -16,6 +16,18 @@ captured by the test harnesses (`make test-demo`, `make test-celeste`).
 | <img src="assets/celeste_title.png" width="360" alt="Celeste Classic title"> | **Celeste Classic (evercore)** title screen — 27 KB of Lua parsed on-console, drawn by the real `_draw`. Cart © Maddy Thorson & Noel Berry (CC-BY-NC-SA), never bundled — build locally with `make test-celeste`. |
 | <img src="assets/m7_first_light.png" width="360" alt="Mode 7 first light"> | **First light** (M0): the Mode 7 chunky-framebuffer spike that proved the whole display path before a line of Lua ran. |
 
+And the M4 parity micro-carts — each of these renders **bit-identical to
+the host oracle** (per-flip framebuffer + RAM hashes), which is the actual
+test; the pictures are just proof of life
+(captured with `snes/test/shot.lua`):
+
+| | | |
+|---|---|---|
+| <img src="assets/gfx_shapes.png" width="240" alt="shapes"> | <img src="assets/gfx_lines.png" width="240" alt="lines"> | <img src="assets/gfx_print.png" width="240" alt="print"> |
+| `gfx_shapes` — rect/circ/oval, outlines and fills, degenerate cases | `gfx_lines` — Bresenham in every octant + the line() continuation state | `gfx_print` — the 4px font, cursor mode, scroll |
+| <img src="assets/gfx_pal_fillp.png" width="240" alt="pal and fillp"> | <img src="assets/demo_input.png" width="240" alt="joypad test"> | |
+| `gfx_pal_fillp` — draw/screen palettes, `palt`, `fillp` dithers | `demo_input` — the live joypad readout from the demo ROM | |
+
 ## What boots and runs
 
 - **The demo ROM** (`make -C snes demo-rom`): our own graphics test, live
@@ -80,6 +92,15 @@ Divergences and dark corners are pinned by test vectors, not folklore:
 - Draw state is snapshotted per shape call (camera/clip/fillp/palette);
   this is observationally identical to per-pixel reads because nothing can
   mutate draw state mid-shape.
+- `rnd`/`srand` match real PICO-8 draws byte-for-byte on seeded streams
+  (see INTERNALS.md); the raw state words at $5F44/$5F48 are held in a
+  different-but-equivalent arrangement.
+- One genuinely open corner: `tostr`'s 4-decimal display boundary. Real
+  PICO-8's evidence is contradictory at the edges (raw `0xffff` displays
+  as "1", demanding rounding; raw `6` displays as "0", demanding
+  truncation) — no single rule fits both. We round half-up like z8lua.
+  Display-only, 1-ulp class; the test vectors compare raw bits and
+  sidestep it.
 
 ## Memory
 

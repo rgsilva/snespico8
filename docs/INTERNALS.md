@@ -66,6 +66,21 @@ Lua VM's instruction counter counts *straight into this slot* via
 separate harness breakages (M8 test-input, the M9 bench, celeste.lua) came
 from scripts reading `.bss` offsets copied out of a stale `p8.map`.
 
+## Randomness: the real console's PRNG, reverse-engineered
+
+`rnd`/`srand` reproduce real PICO-8 (v0.2.6b) byte-for-byte on seeded
+streams — pinned by captured draws, not by trusting any published
+description. The state is two u32 words at $5F44/$5F48. `srand(seed)`
+(raw 16.16 bits): a zero seed becomes `0xdeadbeef`, the second word is
+seeded as `seed ^ 0xbead29ba`, then 32 warm-up steps. The widely-cited
+BBS description of the step function has the word roles swapped; our
+implementation keeps the BBS formulation, which is **output-equivalent
+for seeded streams** (verified: `srand(42)` → `0xec81, 0x0866`
+byte-for-byte) but holds the state words differently — so a cart that
+`peek`s $5F44 directly would see different raw state than on real
+hardware. No known cart does; it's tagged VERIFY in `p8.c` if one ever
+surfaces.
+
 ## The Lua heap: cartridge SRAM as RAM
 
 `lua_newstate` allocates from `p8heap.c`, a first-fit free-list allocator

@@ -10,8 +10,9 @@ cart's music in real time while the game runs. It ships as a single flashable
 doing what they were always capable of.
 
 <p align="center">
-  <img src="docs/assets/menu.png" width="480" alt="the snespico8 cart menu on a SNES"><br>
-  <sub>The built-in cart menu. More shots in <a href="docs/COMPATIBILITY.md">COMPATIBILITY.md</a>.</sub>
+  <img src="docs/assets/celeste_title.png" width="480" alt="Celeste Classic's title screen rendered by snespico8 on a SNES"><br>
+  <sub>Celeste Classic's title screen — 27&nbsp;KB of Lua parsed and drawn on the SNES itself.
+  More shots in <a href="docs/COMPATIBILITY.md">COMPATIBILITY.md</a>.</sub>
 </p>
 
 ## Wait, what?

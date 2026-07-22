@@ -126,7 +126,7 @@ logic; audio/game-time divergence accepted and documented.
 1. **PC reference core** (`core-c/`): z8lua + API in portable C, built
    for the host. `runp8` local runner: headless, per-flip framebuffer
    hash + PNG dump, scripted input traces, optional SDL window later.
-   Oracle for goldens: real PICO-8 (Ricardo owns it) and/or zepto8.
+   Oracle for goldens: real PICO-8 and/or zepto8.
 2. **Same C source compiled for SNES**, glue in WLA-DX. Mesen2
    `--testrunner` + Lua harness reused wholesale from snes86: WRAM
    snapshot → Lua print → python diff; hex-over-stdout screenshots;
@@ -500,4 +500,3 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
 - Same as snes86: direct, pragmatic, honest tradeoffs; iterative hands-on
   validation over theory; measure before projecting. Comments/docs and
   commit messages in English.
-- Owner: Ricardo (Brazil).
