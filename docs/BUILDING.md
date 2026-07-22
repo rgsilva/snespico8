@@ -120,6 +120,28 @@ compiler would, and `tests/dumpvec.sh` plus the parity suite hold the
 two paths bit-identical. Source mode stays the default so the on-console
 parser keeps its test coverage.
 
+### Example: Celeste Classic, start to finish
+
+Celeste Classic is CC-BY-NC-SA, so it is never bundled in this repo —
+fetch it yourself and build locally (the community's evercore fork is
+the cart our test suite targets):
+
+```sh
+curl -sL -o core-c/tests/carts-external/celeste.p8 \
+  https://raw.githubusercontent.com/CelesteClassic/evercore/main/evercore.p8
+
+make -C snes play PLAYCART=../core-c/tests/carts-external/celeste.p8 P8BYTECODE=1
+```
+
+Open `snes/build/p8.sfc` in Mesen (or flash it) and it boots to the
+title in ~20 seconds. **Controls:** d-pad moves; PICO-8's **O** is SNES
+**B or Y**, **X** is SNES **A or X** — either face-button column works.
+The same two commands run any BBS cart; `PLAYCART` also takes a
+`.p8.png` export directly. Set expectations with
+[COMPATIBILITY.md](COMPATIBILITY.md): stock hardware runs Celeste's
+menus fine and its gameplay in slow motion — the SA-1 tier
+([FUTURE.md](FUTURE.md)) is where that changes.
+
 What to expect at today's speeds — and which APIs exist — is in
 [COMPATIBILITY.md](COMPATIBILITY.md). Mind licensing if you rebundle:
 carts you didn't write stay on your machine unless their license says

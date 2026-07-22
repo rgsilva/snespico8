@@ -63,6 +63,10 @@ redistributable. To build a ROM around your own cart:
 cd snes && make play PLAYCART=path/to/cart.p8    # or .p8.png
 ```
 
+(Want Celeste? [docs/BUILDING.md](docs/BUILDING.md) has the two-command
+recipe — fetch the cart, build, play. It stays on your machine: CC
+licensing, see the doc.)
+
 Add `P8BYTECODE=1` to any ROM target to precompile the cart's Lua on
 your machine at build time and embed bytecode instead of source — the
 console then skips its own parse (Celeste: ~65 s of boot becomes ~21 s,
