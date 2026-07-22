@@ -445,16 +445,21 @@ goal), GPIO/serial, `cstore` (SRAM-backed later), 8-player, `tline`/newest
         waits on `$4212` bit 0 first. **btnp repeat** is the core's
         held-counter repeat (M2, delay/interval at 0x5f5c/0x5f5d), live now
         that M7 reads the real pad. **M8 complete.**
-- [ ] M9: perf passes — asm hot paths, measured fps corpus. **Planned** —
-      see `docs/M9-perf-plan.md`: a listing-level audit found the whole
-      runtime still builds at -O0 (the two known -O2 miscompiles are both in
-      the cold lexer), trivial fix32 ops compile to far-call storms, and
-      `p8fix_toint` pays a `_Div32` per integer API argument that even -O2
-      keeps. Plan: measure (fixed bench + PC-sampling profile) -> pure-C
-      wins (toint shift, luaconf inline macros) -> selective -O2 on hot TUs
-      gated by an N-layout parity battery + .lst fences -> gfx inner loops
-      -> LUT flip expand (the ~6 fps flip ceiling is the visible limit) ->
-      asm mul/div leaves; per-op VM split only as contingency.
+- [ ] M9: perf passes — **T0–T4 landed** (`ed0d85d..92d5568` + docs; see
+      `docs/M9-perf-plan.md` for the full results table). Landed: the
+      measurement rig (live mailbox telemetry — vmops counts straight
+      into MB_VMOPS, heap counters at fixed slots; PC-sampling profiler;
+      lstcheck codegen fences; fixfuzz differential fuzzer; PERTURB
+      roulette battery), T1 pure-C fix32 wins (+8.7% VM; also fixed two
+      never-terminating shift paths and a z8lua fractional-negative-count
+      divergence the new gates caught), T2 selective -O2 --speed on 7 hot
+      TUs (ltable pinned -O0: 4th documented Calypsi miscompile; ROM
+      512 → 256 KB; luaV_execute barely improves — Calypsi's optimizer
+      gives up inside the giant switch body), T4 LUT flip expand
+      (game-frame 44 → 11 frames, **fps ceiling 1.37 → ~5.5**), T3
+      draw-context snapshots (**draw carts ~3x**, demo_video 2.2x).
+      Remaining: T5 asm mul/div leaves (hardware $4202/$4204), T6
+      per-opcode VM split (promoted from contingency: the real VM lever).
 - [ ] M10: real hardware, stock SNES, flash cart
 - [ ] M11: SA-1 tier — 4x clock + 256 KB linear heap
 - [x] M12: **documentation pass** — `docs/BUILDING.md` (prerequisites + every

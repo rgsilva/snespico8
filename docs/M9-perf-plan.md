@@ -1,8 +1,15 @@
 # M9 — performance plan
 
-Status: **in progress — T0 (measurement) and T1 (pure-C wins) landed.**
-This document is the analysis, the tiered optimization plan, the
-validation strategy, and the running results table for M9.
+Status: **T0–T4 landed** (measure, pure-C, selective -O2, gfx ctx, flip
+LUT — commits `ed0d85d..92d5568`). Remaining: T5 (asm mul/div leaves,
+hardware multiplier/divider) and T6 (per-opcode VM split — promoted from
+contingency to the real VM lever after T2's finding). This document is
+the analysis, the plan, the validation strategy, and the results table.
+
+Cumulative so far: fps ceiling 1.37 → ~5.5 (4x), draw-bound carts ~3x,
+demo_video 20 → 43 flips (2.2x), VM +11% (1,264 → 1,399 ops/s), ROM
+halved to 256 KB, three latent bugs fixed (two never-terminating shift
+paths, one z8lua divergence), one new Calypsi miscompile documented.
 
 T1 notes: gains match the honest sizing (+8.7% VM — per-op arithmetic is
 a minority at ~2,100 cycles/op; T2 attacks the dispatch ceremony that
@@ -182,14 +189,17 @@ already drifted). `make bench-{vm,draw,flip,api,celeste}` + `make prof`
 fences run before every link. Mesen runs ~0.6x real time headless, so a
 bench costs ~2-8 min wall.
 
-| cart | metric | baseline | T1 | T2 | T4 |
-|------|--------|----------|----|----|----|
-| bench_vm | add-loop VM rate | **1,264 ops/s** (M3 continuity confirmed) | **1,374** (+8.7%) | 1,399 (+1.8%) | — |
-| bench_vm | mul-loop VM rate | ~620-670 ops/s | ~690 | — | — |
-| bench_flip | game-frame, empty `_draw` | **~44 frames (~730 ms) → 1.37 fps ceiling** | — (T4 target) | unchanged | **~11 frames → ~5.5 fps (4x)** |
-| bench_draw | fills/lines/circles+print | ~0.23 fps (16 flips/4.5K frames) | 17 flips (+6%) | 16 (noise) | 18 (+12%) |
-| demo_video (api) | | ~0.27 fps (20 flips/4.5K frames) | 22 flips (+10%) | 21 (noise) | **25 (+19%)** |
-| ROM size | | 512 KB | 512 KB | **256 KB** | 256 KB |
+| cart | metric | baseline | T1 | T2 | T4 | T3 (cumulative) |
+|------|--------|----------|----|----|----|----|
+| bench_vm | add-loop VM rate | **1,264 ops/s** (M3 continuity confirmed) | **1,374** (+8.7%) | 1,399 (+1.8%) | — | 1,399 |
+| bench_vm | mul-loop VM rate | ~620-670 ops/s | ~690 | — | — | — |
+| bench_flip | game-frame, empty `_draw` | **~44 frames (~730 ms) → 1.37 fps ceiling** | — (T4 target) | unchanged | **~11 frames → ~5.5 fps (4x)** | ~11 frames |
+| bench_draw | fills/lines/circles+print | ~0.23 fps (16 flips/4.5K frames) | 17 flips (+6%) | 16 (noise) | 18 (+12%) | **49 (3.1x, ~0.7 fps)** |
+| demo_video (api) | | ~0.27 fps (20 flips/4.5K frames) | 22 flips (+10%) | 21 (noise) | **25 (+19%)** | **43 (2.2x, ~0.6 fps)** |
+| ROM size | | 512 KB | 512 KB | **256 KB** | 256 KB | 256 KB |
+
+(Columns are chronological: T4 landed before T3; each column includes
+everything to its left.)
 | celeste | parse 27 KB | ~3,540 frames ≈ 59 s |
 | celeste | `_init` VM rate | ~330-400 ops/s (1,848 ops total) |
 | celeste | first title `_draw` | multi-minute C grind (full-screen `map()`), 0 flips in budget |

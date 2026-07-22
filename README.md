@@ -36,7 +36,7 @@ docs/     project brief, build guide, format + design notes
 | M6 | real-time SPC audio + all note effects | ✅ |
 | M7 | live controller input | ✅ |
 | M8 | carting/UX — menu, `.p8.png`, pause menu + `menuitem()` | ✅ |
-| M9 | perf passes | ⬜ |
+| M9 | perf passes | 🔶 |
 | M10 | real hardware | ⬜ |
 | M11 | SA-1 tier | ⬜ |
 | M12 | documentation pass | 🔶 |
@@ -104,8 +104,14 @@ docs/     project brief, build guide, format + design notes
   installs Calypsi from its official release + builds WLA-DX). A `v*` tag
   publishes a release with `snespico8.sfc` attached; the CI ROM is
   byte-identical to a local `make -C snes release`.
-- Next: M9 (perf) — the swing toward playable. Planned in
-  [`docs/M9-perf-plan.md`](docs/M9-perf-plan.md): the runtime still builds at
-  -O0; the plan is measure → pure-C wins → selective -O2 (parity-gated) →
-  gfx/flip paths → asm leaves. Honest ceiling: simple carts playable,
-  API-heavy carts at real frame rates; real-time Celeste stays M11 (SA-1).
+- **M9 (perf) in progress — T0–T4 landed** ([`docs/M9-perf-plan.md`](docs/M9-perf-plan.md)):
+  measurement rig (live mailbox telemetry, PC-sampling profiler, codegen
+  fences, differential fuzzer, perturbed-layout roulette battery), pure-C
+  fix32 wins, selective -O2 --speed on the hot TUs (a 4th Calypsi
+  miscompile found and pinned; ROM halved to 256 KB), a LUT flip path
+  (**fps ceiling 1.37 → ~5.5, 4x**), and per-shape draw-context snapshots
+  (**draw-bound carts ~3x**). The gates also caught and fixed two latent
+  never-terminating shift paths and a z8lua shift divergence. Remaining:
+  T5 (hardware mul/div leaves) and T6 (per-opcode VM split — the real VM
+  lever; Calypsi's optimizer gives up inside the giant interpreter body).
+  Real-time Celeste stays M11 (SA-1).
